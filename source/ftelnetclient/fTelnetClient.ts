@@ -39,6 +39,13 @@ class fTelnetClient {
     /// MAX_DRAIN_BYTES_PER_TURN caps how much is processed before yielding,
     /// so a large backlog cannot block the UI thread indefinitely.
     /// </remarks>
+    /// <summary>
+    /// CTerm revision reported in the Device Attributes reply, as
+    /// 'major;minor'. 1;189 is the minimum Synchronet accepts before it
+    /// will even ask whether sixel is supported.
+    /// </summary>
+    private static CTERM_REVISION: string = '1;189';
+
     private static MAX_DRAIN_CHUNK_BYTES: number = 65536;
     private static MAX_DRAIN_BYTES_PER_TURN: number = 1048576;
 
@@ -200,6 +207,7 @@ class fTelnetClient {
         this._Ansi = new Ansi(this._Crt);
         this._Ansi.onDECRQCRA.on((pid: number, x1: number, y1: number, x2: number, y2: number): void => { this.OnAnsiDECRQCRA(pid, x1, y1, x2, y2); });
         this._Ansi.onesc0c.on((): void => { this.OnAnsiESC0c(); });
+        this._Ansi.onescCTDA.on((): void => { this.OnAnsiCTDA(); });
         this._Ansi.onesc5n.on((): void => { this.OnAnsiESC5n(); });
         this._Ansi.onesc6n.on((): void => { this.OnAnsiESC6n(); });
         this._Ansi.onesc8t.on((columns: number, rows: number): void => { this.OnAnsiESC8t(columns, rows); });
@@ -810,10 +818,41 @@ class fTelnetClient {
         this._Connection.writeString(this._Ansi.Checksum(pid, x1, y1, x2, y2));
     }
 
+    /// <summary>
+    /// Primary Device Attributes. Identifies as CTerm with a revision.
+    /// </summary>
+    /// <remarks>
+    /// Synchronet reads this to populate console.cterm_version, and gates
+    /// feature detection on it. The old reply identified as VTX, which left
+    /// cterm_version undefined, so every capability check failed and doors
+    /// never sent anything richer than plain ANSI - including sixel.
+    ///
+    /// The revision reported here is the minimum that clears Synchronet's
+    /// sixel gate. Capabilities are advertised individually in the CTerm
+    /// Device Attributes reply rather than implied by this number, so raise
+    /// it only alongside the features a higher revision would imply.
+    /// Parsed by answer.cpp as (major * 1000) + minor.
+    /// </remarks>
     private OnAnsiESC0c(): void {
         if (typeof this._Connection === 'undefined') { return; }
         if (!this._Connection.connected) { return; }
-        this._Connection.writeString('\x1B[?50;86;84;88c'); // reply for VTX ;-)
+        this._Connection.writeString('\x1B[=67;84;101;114;109;' + fTelnetClient.CTERM_REVISION + 'c');
+    }
+
+    /// <summary>
+    /// CTerm Device Attributes: the capabilities we actually implement.
+    /// </summary>
+    /// <remarks>
+    /// 0 marks the reply valid, 4 is pixel operations (sixel), 7 is mouse
+    /// reporting. Deliberately omitted, because they are not implemented:
+    /// 1 loadable fonts via DCS, 2 bright background, 3 palette via OSC,
+    /// 5 font selection, 6 extended palette. Claiming one of those would
+    /// make a server send sequences that get silently discarded.
+    /// </remarks>
+    private OnAnsiCTDA(): void {
+        if (typeof this._Connection === 'undefined') { return; }
+        if (!this._Connection.connected) { return; }
+        this._Connection.writeString('\x1B[<0;4;7c');
     }
 
     private OnAnsiESC5n(): void {

@@ -21,6 +21,7 @@ class Ansi {
     // Events
     public onDECRQCRA: IEvent = new TypedEvent();
     public onesc0c: IEvent = new TypedEvent();
+    public onescCTDA: IEvent = new TypedEvent();
     public onesc5n: IEvent = new TypedEvent();
     public onesc6n: IEvent = new TypedEvent();
     public onesc8t: IEvent = new TypedEvent();
@@ -179,6 +180,13 @@ class Ansi {
 	                        adding an extra parameter to the end, not by incrementing any existing
 	                        one!
 	                        SOURCE: http://www.ecma-international.org/publications/files/ECMA-ST/Ecma-048.pdf */
+                // CSI < Ps c  CTerm Device Attributes (CTDA). The '<' is a
+                // parameter byte, so it arrives as the first parameter.
+                if ((this._AnsiParams.length >= 1) && (this._AnsiParams[0].charAt(0) === '<')) {
+                    this.onescCTDA.trigger();
+                    break;
+                }
+
                 x = this.GetNextParam(0);
                 switch (x) {
                     case 0: this.onesc0c.trigger(); break;

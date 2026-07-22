@@ -560,6 +560,7 @@ var Ansi = (function () {
     function Ansi(crt) {
         this.onDECRQCRA = new TypedEvent();
         this.onesc0c = new TypedEvent();
+        this.onescCTDA = new TypedEvent();
         this.onesc5n = new TypedEvent();
         this.onesc6n = new TypedEvent();
         this.onesc8t = new TypedEvent();
@@ -657,6 +658,10 @@ var Ansi = (function () {
                 this._Crt.GotoXY(x, this._Crt.WhereY());
                 break;
             case 'c':
+                if ((this._AnsiParams.length >= 1) && (this._AnsiParams[0].charAt(0) === '<')) {
+                    this.onescCTDA.trigger();
+                    break;
+                }
                 x = this.GetNextParam(0);
                 switch (x) {
                     case 0:
@@ -5920,6 +5925,7 @@ var fTelnetClient = (function () {
         this._Ansi = new Ansi(this._Crt);
         this._Ansi.onDECRQCRA.on(function (pid, x1, y1, x2, y2) { _this.OnAnsiDECRQCRA(pid, x1, y1, x2, y2); });
         this._Ansi.onesc0c.on(function () { _this.OnAnsiESC0c(); });
+        this._Ansi.onescCTDA.on(function () { _this.OnAnsiCTDA(); });
         this._Ansi.onesc5n.on(function () { _this.OnAnsiESC5n(); });
         this._Ansi.onesc6n.on(function () { _this.OnAnsiESC6n(); });
         this._Ansi.onesc8t.on(function (columns, rows) { _this.OnAnsiESC8t(columns, rows); });
@@ -6472,7 +6478,16 @@ var fTelnetClient = (function () {
         if (!this._Connection.connected) {
             return;
         }
-        this._Connection.writeString('\x1B[?50;86;84;88c');
+        this._Connection.writeString('\x1B[=67;84;101;114;109;' + fTelnetClient.CTERM_REVISION + 'c');
+    };
+    fTelnetClient.prototype.OnAnsiCTDA = function () {
+        if (typeof this._Connection === 'undefined') {
+            return;
+        }
+        if (!this._Connection.connected) {
+            return;
+        }
+        this._Connection.writeString('\x1B[<0;4;7c');
     };
     fTelnetClient.prototype.OnAnsiESC5n = function () {
         if (typeof this._Connection === 'undefined') {
@@ -6884,6 +6899,7 @@ var fTelnetClient = (function () {
         enumerable: true,
         configurable: true
     });
+    fTelnetClient.CTERM_REVISION = '1;189';
     fTelnetClient.MAX_DRAIN_CHUNK_BYTES = 65536;
     fTelnetClient.MAX_DRAIN_BYTES_PER_TURN = 1048576;
     return fTelnetClient;
