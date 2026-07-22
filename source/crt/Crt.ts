@@ -115,6 +115,10 @@ class Crt {
     // column; the line wrap it implies is deferred until the next printable
     // character actually arrives. Cleared by any explicit cursor move.
     private _PendingWrap: boolean = false;
+    // CTerm physical key reporting (CSI = 1 h / CSI = 1 l) and the set of
+    // evdev codes currently held, so auto-repeat does not re-report a press.
+    private _ReportPhysicalKeys: boolean = false;
+    private _PhysicalKeysDown: any = {};
     private _Transparent: Boolean = false;
     private _UseModernScrollback: Boolean = false;
     private _WindMin: number = 0;
@@ -169,6 +173,7 @@ class Crt {
         // Register keydown and keypress handlers
         window.addEventListener('keydown', (ke: KeyboardEvent): void => { this.OnKeyDown(ke); }, false); // For special keys
         window.addEventListener('keypress', (ke: KeyboardEvent): void => { this.OnKeyPress(ke); }, false); // For regular keys
+        window.addEventListener('keyup', (ke: KeyboardEvent): void => { this.OnKeyUp(ke); }, false); // For physical key reports
         window.addEventListener('resize', (): void => { this.OnResize(); }, false);
 
         // Reset the screen buffer
@@ -954,11 +959,74 @@ class Crt {
         this.onfontchange.trigger();
     }
 
+    /// <summary>
+    /// Whether keys are reported as physical press/release edges.
+    /// </summary>
+    public get ReportPhysicalKeys(): boolean {
+        return this._ReportPhysicalKeys;
+    }
+
+    public set ReportPhysicalKeys(value: boolean) {
+        if (this._ReportPhysicalKeys === value) { return; }
+        this._ReportPhysicalKeys = value;
+        // Releasing the mode with keys still held would strand them down at
+        // the far end, so forget the held set on every transition.
+        this._PhysicalKeysDown = {};
+    }
+
+    /// <summary>
+    /// Emits a physical key edge if the mode is on. Returns true when the
+    /// event was consumed and must not also be sent as a character.
+    /// </summary>
+    private ReportPhysicalKey(ke: KeyboardEvent, down: boolean): boolean {
+        if (!this._ReportPhysicalKeys) { return false; }
+
+        var code: number = PhysicalKeys.ToEvdev(ke);
+        if (code < 0) { return false; }
+
+        var held: boolean = this._PhysicalKeysDown[code] === true;
+        var report: string = '';
+
+        if (down) {
+            if (!held) {
+                this._PhysicalKeysDown[code] = true;
+                report = PhysicalKeys.Down(code);
+            }
+            // else: auto-repeat, the down edge already went out
+        } else if (held) {
+            delete this._PhysicalKeysDown[code];
+            report = PhysicalKeys.Up(code);
+        }
+
+        if (report !== '') {
+            this._KeyBuf.push(new KeyPressEvent(<KeyboardEvent>{
+                altKey: false, ctrlKey: false, shiftKey: false,
+                keyCode: 0, charCode: 0,
+                preventDefault: function (): void { /* nothing */ }
+            }, report));
+            this.onkeypressed.trigger();
+        }
+
+        if (typeof ke.preventDefault === 'function') { ke.preventDefault(); }
+        return true;
+    }
+
+    private OnKeyUp(ke: KeyboardEvent): void {
+        if (!window.cordova) {
+            if ((ke.target instanceof HTMLInputElement) || (ke.target instanceof HTMLTextAreaElement)) { return; }
+        }
+        this.ReportPhysicalKey(ke, false);
+    }
+
     private OnKeyDown(ke: KeyboardEvent): void {
         // Skip out if we've focused an input element
         if (!window.cordova) {
             if ((ke.target instanceof HTMLInputElement) || (ke.target instanceof HTMLTextAreaElement)) { return; }
         }
+
+        // Physical key reporting replaces character delivery entirely while
+        // it is on, so this comes before anything that would consume the key.
+        if (this.ReportPhysicalKey(ke, true)) { return; }
 
         if (this._InScrollback) {
             var i: number;

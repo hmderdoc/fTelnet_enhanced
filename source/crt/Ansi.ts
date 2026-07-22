@@ -27,6 +27,9 @@ class Ansi {
     public onDECRQCRA: IEvent = new TypedEvent();
     public onesc0c: IEvent = new TypedEvent();
     public onescCTDA: IEvent = new TypedEvent();
+    public onescFontState: IEvent = new TypedEvent();
+    public onescModeQuery: IEvent = new TypedEvent();
+    public onescUnknownPrivateDsr: IEvent = new TypedEvent();
     public onesc5n: IEvent = new TypedEvent();
     public onesc6n: IEvent = new TypedEvent();
     public onesc8t: IEvent = new TypedEvent();
@@ -334,6 +337,18 @@ class Ansi {
             case 'h':
                 if (this._AnsiParams.length < 1) { this._AnsiParams.push('0'); }
                 switch (this._AnsiParams[0]) {
+                    case '=1': /* CSI = 1 h
+                                    Enable CTerm physical key reporting: keys
+                                    are reported as press/release edges with
+                                    evdev scancodes instead of as characters. */
+                        this._Crt.ReportPhysicalKeys = true;
+                        break;
+                    case '=2': /* CSI = 2 h
+                                    Enable translated input. Nothing to do:
+                                    character delivery is already the default,
+                                    but it must be accepted rather than logged
+                                    as unknown. */
+                        break;
                     case '=255': /* CSI = 255 h
 	                                NON-STANDARD EXTENSION
 	                                Enable DoorWay Mode
@@ -470,6 +485,12 @@ class Ansi {
             case 'l':
                 if (this._AnsiParams.length < 1) { this._AnsiParams.push('0'); }
                 switch (this._AnsiParams[0]) {
+                    case '=1': /* CSI = 1 l
+                                    Disable CTerm physical key reporting. */
+                        this._Crt.ReportPhysicalKeys = false;
+                        break;
+                    case '=2': /* CSI = 2 l  Disable translated input. */
+                        break;
                     case '=255': /* CSI = 255 l
 	                                NON-STANDARD EXTENSION
 	                                Disable DoorWay Mode
@@ -796,6 +817,23 @@ class Ansi {
 	                        SOURCE: http://www.ecma-international.org/publications/files/ECMA-ST/Ecma-048.pdf
 		                        (parameters 5 and 6 only)
 	                        SOURCE: BANSI.TXT (parameter 255) */
+                // CSI = Ps n  CTerm private status requests. The '=' arrives
+                // as part of the first parameter.
+                //
+                // These MUST be answered. cterm_lib's query() blocks on
+                // inkey(0, 3000) waiting for a reply and consumes whatever the
+                // user types in the meantime, so an unanswered query is a
+                // three second freeze that also eats keystrokes. Anything the
+                // reported CTerm revision implies has to have an answer here.
+                if ((this._AnsiParams.length >= 1) && (this._AnsiParams[0].charAt(0) === '=')) {
+                    switch (parseInt(this._AnsiParams[0].substring(1), 10)) {
+                        case 1: this.onescFontState.trigger(); break;
+                        case 2: this.onescModeQuery.trigger(); break;
+                        default: this.onescUnknownPrivateDsr.trigger(); break;
+                    }
+                    break;
+                }
+
                 x = this.GetNextParam(0);
                 switch (x) {
                     case 5: this.onesc5n.trigger(); break;

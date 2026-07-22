@@ -976,6 +976,9 @@ var Ansi = (function () {
         this.onDECRQCRA = new TypedEvent();
         this.onesc0c = new TypedEvent();
         this.onescCTDA = new TypedEvent();
+        this.onescFontState = new TypedEvent();
+        this.onescModeQuery = new TypedEvent();
+        this.onescUnknownPrivateDsr = new TypedEvent();
         this.onesc5n = new TypedEvent();
         this.onesc6n = new TypedEvent();
         this.onesc8t = new TypedEvent();
@@ -1135,6 +1138,11 @@ var Ansi = (function () {
                     this._AnsiParams.push('0');
                 }
                 switch (this._AnsiParams[0]) {
+                    case '=1':
+                        this._Crt.ReportPhysicalKeys = true;
+                        break;
+                    case '=2':
+                        break;
                     case '=255':
                         console.log('Unhandled ESC sequence: Enable DoorWay Mode');
                         break;
@@ -1212,6 +1220,11 @@ var Ansi = (function () {
                     this._AnsiParams.push('0');
                 }
                 switch (this._AnsiParams[0]) {
+                    case '=1':
+                        this._Crt.ReportPhysicalKeys = false;
+                        break;
+                    case '=2':
+                        break;
                     case '=255':
                         console.log('Unhandled ESC sequence: Disable DoorWay Mode');
                         break;
@@ -1426,6 +1439,20 @@ var Ansi = (function () {
                 console.log('Unhandled ESC sequence: ANSI Music');
                 break;
             case 'n':
+                if ((this._AnsiParams.length >= 1) && (this._AnsiParams[0].charAt(0) === '=')) {
+                    switch (parseInt(this._AnsiParams[0].substring(1), 10)) {
+                        case 1:
+                            this.onescFontState.trigger();
+                            break;
+                        case 2:
+                            this.onescModeQuery.trigger();
+                            break;
+                        default:
+                            this.onescUnknownPrivateDsr.trigger();
+                            break;
+                    }
+                    break;
+                }
                 x = this.GetNextParam(0);
                 switch (x) {
                     case 5:
@@ -1983,6 +2010,8 @@ var Crt = (function () {
         this._SkipRedrawWhenSameFontSize = false;
         this._OffscreenSaved = null;
         this._PendingWrap = false;
+        this._ReportPhysicalKeys = false;
+        this._PhysicalKeysDown = {};
         this._Transparent = false;
         this._UseModernScrollback = false;
         this._WindMin = 0;
@@ -2018,6 +2047,7 @@ var Crt = (function () {
         this._Container.appendChild(this._Canvas);
         window.addEventListener('keydown', function (ke) { _this.OnKeyDown(ke); }, false);
         window.addEventListener('keypress', function (ke) { _this.OnKeyPress(ke); }, false);
+        window.addEventListener('keyup', function (ke) { _this.OnKeyUp(ke); }, false);
         window.addEventListener('resize', function () { _this.OnResize(); }, false);
         this.InitBuffers(true);
         this._Cursor = new Cursor(CrtFont.ANSI_COLOURS[Crt.LIGHTGRAY], this._Font.Size);
@@ -2543,11 +2573,69 @@ var Crt = (function () {
         }
         this.onfontchange.trigger();
     };
+    Object.defineProperty(Crt.prototype, "ReportPhysicalKeys", {
+        get: function () {
+            return this._ReportPhysicalKeys;
+        },
+        set: function (value) {
+            if (this._ReportPhysicalKeys === value) {
+                return;
+            }
+            this._ReportPhysicalKeys = value;
+            this._PhysicalKeysDown = {};
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Crt.prototype.ReportPhysicalKey = function (ke, down) {
+        if (!this._ReportPhysicalKeys) {
+            return false;
+        }
+        var code = PhysicalKeys.ToEvdev(ke);
+        if (code < 0) {
+            return false;
+        }
+        var held = this._PhysicalKeysDown[code] === true;
+        var report = '';
+        if (down) {
+            if (!held) {
+                this._PhysicalKeysDown[code] = true;
+                report = PhysicalKeys.Down(code);
+            }
+        }
+        else if (held) {
+            delete this._PhysicalKeysDown[code];
+            report = PhysicalKeys.Up(code);
+        }
+        if (report !== '') {
+            this._KeyBuf.push(new KeyPressEvent({
+                altKey: false, ctrlKey: false, shiftKey: false,
+                keyCode: 0, charCode: 0,
+                preventDefault: function () { }
+            }, report));
+            this.onkeypressed.trigger();
+        }
+        if (typeof ke.preventDefault === 'function') {
+            ke.preventDefault();
+        }
+        return true;
+    };
+    Crt.prototype.OnKeyUp = function (ke) {
+        if (!window.cordova) {
+            if ((ke.target instanceof HTMLInputElement) || (ke.target instanceof HTMLTextAreaElement)) {
+                return;
+            }
+        }
+        this.ReportPhysicalKey(ke, false);
+    };
     Crt.prototype.OnKeyDown = function (ke) {
         if (!window.cordova) {
             if ((ke.target instanceof HTMLInputElement) || (ke.target instanceof HTMLTextAreaElement)) {
                 return;
             }
+        }
+        if (this.ReportPhysicalKey(ke, true)) {
+            return;
         }
         if (this._InScrollback) {
             var i;
@@ -4654,6 +4742,71 @@ var KeyboardKeys;
     KeyboardKeys[KeyboardKeys["WINDOWS"] = 1003] = "WINDOWS";
     KeyboardKeys[KeyboardKeys["UP"] = 38] = "UP";
 })(KeyboardKeys || (KeyboardKeys = {}));
+var PhysicalKeys = (function () {
+    function PhysicalKeys() {
+    }
+    PhysicalKeys.ToEvdev = function (ke) {
+        var byCode = PhysicalKeys.CODE_TO_EVDEV[ke.code];
+        if (typeof byCode === 'number') {
+            return byCode;
+        }
+        var byKeyCode = PhysicalKeys.KEYCODE_TO_EVDEV[ke.keyCode];
+        if (typeof byKeyCode === 'number') {
+            return byKeyCode;
+        }
+        return -1;
+    };
+    PhysicalKeys.Down = function (code) {
+        return '\x1B[=' + code.toString(10) + 'K';
+    };
+    PhysicalKeys.Up = function (code) {
+        return '\x1B[=' + code.toString(10) + 'k';
+    };
+    PhysicalKeys.CODE_TO_EVDEV = {
+        'Escape': 1,
+        'Digit1': 2, 'Digit2': 3, 'Digit3': 4, 'Digit4': 5, 'Digit5': 6,
+        'Digit6': 7, 'Digit7': 8, 'Digit8': 9, 'Digit9': 10, 'Digit0': 11,
+        'Minus': 12, 'Equal': 13, 'Backspace': 14, 'Tab': 15,
+        'KeyQ': 16, 'KeyW': 17, 'KeyE': 18, 'KeyR': 19, 'KeyT': 20,
+        'KeyY': 21, 'KeyU': 22, 'KeyI': 23, 'KeyO': 24, 'KeyP': 25,
+        'BracketLeft': 26, 'BracketRight': 27, 'Enter': 28, 'ControlLeft': 29,
+        'KeyA': 30, 'KeyS': 31, 'KeyD': 32, 'KeyF': 33, 'KeyG': 34,
+        'KeyH': 35, 'KeyJ': 36, 'KeyK': 37, 'KeyL': 38,
+        'Semicolon': 39, 'Quote': 40, 'Backquote': 41, 'ShiftLeft': 42,
+        'Backslash': 43,
+        'KeyZ': 44, 'KeyX': 45, 'KeyC': 46, 'KeyV': 47, 'KeyB': 48,
+        'KeyN': 49, 'KeyM': 50, 'Comma': 51, 'Period': 52, 'Slash': 53,
+        'ShiftRight': 54, 'NumpadMultiply': 55, 'AltLeft': 56, 'Space': 57,
+        'CapsLock': 58,
+        'F1': 59, 'F2': 60, 'F3': 61, 'F4': 62, 'F5': 63, 'F6': 64,
+        'F7': 65, 'F8': 66, 'F9': 67, 'F10': 68,
+        'NumLock': 69, 'ScrollLock': 70,
+        'Numpad7': 71, 'Numpad8': 72, 'Numpad9': 73, 'NumpadSubtract': 74,
+        'Numpad4': 75, 'Numpad5': 76, 'Numpad6': 77, 'NumpadAdd': 78,
+        'Numpad1': 79, 'Numpad2': 80, 'Numpad3': 81, 'Numpad0': 82,
+        'NumpadDecimal': 83,
+        'F11': 87, 'F12': 88,
+        'NumpadEnter': 96, 'ControlRight': 97, 'NumpadDivide': 98,
+        'AltRight': 100, 'Home': 102, 'ArrowUp': 103, 'PageUp': 104,
+        'ArrowLeft': 105, 'ArrowRight': 106, 'End': 107, 'ArrowDown': 108,
+        'PageDown': 109, 'Insert': 110, 'Delete': 111,
+        'MetaLeft': 125, 'MetaRight': 126
+    };
+    PhysicalKeys.KEYCODE_TO_EVDEV = {
+        8: 14, 9: 15, 13: 28, 16: 42, 17: 29, 18: 56, 27: 1, 32: 57,
+        33: 104, 34: 109, 35: 107, 36: 102,
+        37: 105, 38: 103, 39: 106, 40: 108,
+        45: 110, 46: 111,
+        48: 11, 49: 2, 50: 3, 51: 4, 52: 5, 53: 6, 54: 7, 55: 8, 56: 9, 57: 10,
+        65: 30, 66: 48, 67: 46, 68: 32, 69: 18, 70: 33, 71: 34, 72: 35,
+        73: 23, 74: 36, 75: 37, 76: 38, 77: 50, 78: 49, 79: 24, 80: 25,
+        81: 16, 82: 19, 83: 31, 84: 20, 85: 22, 86: 47, 87: 17, 88: 45,
+        89: 21, 90: 44,
+        112: 59, 113: 60, 114: 61, 115: 62, 116: 63, 117: 64,
+        118: 65, 119: 66, 120: 67, 121: 68, 122: 87, 123: 88
+    };
+    return PhysicalKeys;
+}());
 var Sixel = (function () {
     function Sixel() {
     }
@@ -7562,6 +7715,9 @@ var fTelnetClient = (function () {
         this._Ansi.onDECRQCRA.on(function (pid, x1, y1, x2, y2) { _this.OnAnsiDECRQCRA(pid, x1, y1, x2, y2); });
         this._Ansi.onesc0c.on(function () { _this.OnAnsiESC0c(); });
         this._Ansi.onescCTDA.on(function () { _this.OnAnsiCTDA(); });
+        this._Ansi.onescFontState.on(function () { _this.OnAnsiFontState(); });
+        this._Ansi.onescModeQuery.on(function () { _this.OnAnsiModeQuery(); });
+        this._Ansi.onescUnknownPrivateDsr.on(function () { _this.OnAnsiUnknownPrivateDsr(); });
         this._Ansi.onesc5n.on(function () { _this.OnAnsiESC5n(); });
         this._Ansi.onesc6n.on(function () { _this.OnAnsiESC6n(); });
         this._Ansi.onesc8t.on(function (columns, rows) { _this.OnAnsiESC8t(columns, rows); });
@@ -8123,7 +8279,34 @@ var fTelnetClient = (function () {
         if (!this._Connection.connected) {
             return;
         }
-        this._Connection.writeString('\x1B[<0;4;7c');
+        this._Connection.writeString('\x1B[<0;4;7;8c');
+    };
+    fTelnetClient.prototype.OnAnsiFontState = function () {
+        if (typeof this._Connection === 'undefined') {
+            return;
+        }
+        if (!this._Connection.connected) {
+            return;
+        }
+        this._Connection.writeString('\x1B[=1;43;1;0;0;0;0n');
+    };
+    fTelnetClient.prototype.OnAnsiModeQuery = function () {
+        if (typeof this._Connection === 'undefined') {
+            return;
+        }
+        if (!this._Connection.connected) {
+            return;
+        }
+        this._Connection.writeString('\x1B[=2n');
+    };
+    fTelnetClient.prototype.OnAnsiUnknownPrivateDsr = function () {
+        if (typeof this._Connection === 'undefined') {
+            return;
+        }
+        if (!this._Connection.connected) {
+            return;
+        }
+        this._Connection.writeString('\x1B[=0n');
     };
     fTelnetClient.prototype.OnAnsiESC5n = function () {
         if (typeof this._Connection === 'undefined') {

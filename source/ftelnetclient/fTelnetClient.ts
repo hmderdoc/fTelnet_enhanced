@@ -210,6 +210,9 @@ class fTelnetClient {
         this._Ansi.onDECRQCRA.on((pid: number, x1: number, y1: number, x2: number, y2: number): void => { this.OnAnsiDECRQCRA(pid, x1, y1, x2, y2); });
         this._Ansi.onesc0c.on((): void => { this.OnAnsiESC0c(); });
         this._Ansi.onescCTDA.on((): void => { this.OnAnsiCTDA(); });
+        this._Ansi.onescFontState.on((): void => { this.OnAnsiFontState(); });
+        this._Ansi.onescModeQuery.on((): void => { this.OnAnsiModeQuery(); });
+        this._Ansi.onescUnknownPrivateDsr.on((): void => { this.OnAnsiUnknownPrivateDsr(); });
         this._Ansi.onesc5n.on((): void => { this.OnAnsiESC5n(); });
         this._Ansi.onesc6n.on((): void => { this.OnAnsiESC6n(); });
         this._Ansi.onesc8t.on((columns: number, rows: number): void => { this.OnAnsiESC8t(columns, rows); });
@@ -846,15 +849,57 @@ class fTelnetClient {
     /// </summary>
     /// <remarks>
     /// 0 marks the reply valid, 4 is pixel operations (sixel), 7 is mouse
-    /// reporting. Deliberately omitted, because they are not implemented:
-    /// 1 loadable fonts via DCS, 2 bright background, 3 palette via OSC,
-    /// 5 font selection, 6 extended palette. Claiming one of those would
-    /// make a server send sequences that get silently discarded.
+    /// reporting, 8 is physical key reporting. Deliberately omitted, because
+    /// they are not implemented: 1 loadable fonts via DCS, 2 bright
+    /// background, 3 palette via OSC, 5 font selection, 6 extended palette.
+    /// Claiming one of those would make a server send sequences that get
+    /// silently discarded.
     /// </remarks>
     private OnAnsiCTDA(): void {
         if (typeof this._Connection === 'undefined') { return; }
         if (!this._Connection.connected) { return; }
-        this._Connection.writeString('\x1B[<0;4;7c');
+        this._Connection.writeString('\x1B[<0;4;7;8c');
+    }
+
+    /// <summary>
+    /// CSI = 1 n  font state query.
+    /// </summary>
+    /// <remarks>
+    /// Fields are first-slot; result; then four active style slots.
+    /// cterm_lib's supports_fonts() treats a result of 0 or 99 as success;
+    /// anything else means fonts are unavailable, which is the truthful
+    /// answer here since loadable fonts are not implemented. The point of
+    /// replying at all is that silence costs the caller a three second
+    /// timeout during which it swallows the user's keystrokes.
+    /// </remarks>
+    private OnAnsiFontState(): void {
+        if (typeof this._Connection === 'undefined') { return; }
+        if (!this._Connection.connected) { return; }
+        this._Connection.writeString('\x1B[=1;43;1;0;0;0;0n');
+    }
+
+    /// <summary>
+    /// CSI = 2 n  extended mode query. No extended modes are enabled, which
+    /// cterm_lib spells as the bare request echoed back.
+    /// </summary>
+    private OnAnsiModeQuery(): void {
+        if (typeof this._Connection === 'undefined') { return; }
+        if (!this._Connection.connected) { return; }
+        this._Connection.writeString('\x1B[=2n');
+    }
+
+    /// <summary>
+    /// Any other CSI = Ps n we do not implement.
+    /// </summary>
+    /// <remarks>
+    /// Still answered, with the bare form, rather than left to time out.
+    /// A wrong-but-prompt answer costs a feature; silence costs three seconds
+    /// of frozen terminal and eaten keystrokes.
+    /// </remarks>
+    private OnAnsiUnknownPrivateDsr(): void {
+        if (typeof this._Connection === 'undefined') { return; }
+        if (!this._Connection.connected) { return; }
+        this._Connection.writeString('\x1B[=0n');
     }
 
     private OnAnsiESC5n(): void {
