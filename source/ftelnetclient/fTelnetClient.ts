@@ -619,6 +619,17 @@ class fTelnetClient {
         return this._Connection;
     }
 
+    /// <summary>
+    /// The options this client was constructed with.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so hosts can read and adjust settings after construction
+    /// without reaching into private state.
+    /// </remarks>
+    public get Options(): fTelnetOptions {
+        return this._Options;
+    }
+
     public get Crt(): Crt {
         return this._Crt;
     }

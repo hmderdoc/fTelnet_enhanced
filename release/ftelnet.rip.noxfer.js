@@ -9611,6 +9611,13 @@ var fTelnetClient = (function () {
         enumerable: true,
         configurable: true
     });
+    Object.defineProperty(fTelnetClient.prototype, "Options", {
+        get: function () {
+            return this._Options;
+        },
+        enumerable: true,
+        configurable: true
+    });
     Object.defineProperty(fTelnetClient.prototype, "Crt", {
         get: function () {
             return this._Crt;
