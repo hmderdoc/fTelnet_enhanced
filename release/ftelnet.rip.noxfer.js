@@ -577,6 +577,8 @@ var Ansi = (function () {
         this._AnsiParams = [];
         this._AnsiParserState = AnsiParserState.None;
         this._AnsiXY = new Point(1, 1);
+        this._NormalizeSgr = true;
+        this._SgrFragment = '';
         this._Crt = crt;
     }
     Ansi.prototype.AnsiCommand = function (finalByte) {
@@ -1173,7 +1175,104 @@ var Ansi = (function () {
         var ySize = this._Crt.ScreenRows * this._Crt.Font.Height;
         return '\x1B[?2;0;' + xSize.toString(10) + ';' + ySize.toString(10) + 'S';
     };
+    Object.defineProperty(Ansi.prototype, "NormalizeSgr", {
+        get: function () {
+            return this._NormalizeSgr;
+        },
+        set: function (value) {
+            this._NormalizeSgr = value;
+            if (!value) {
+                this._SgrFragment = '';
+            }
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Ansi.prototype.NormalizeSgrParams = function (match, params) {
+        var tokens = String(params || '').replace(/:/g, ';').split(';').filter(function (token) {
+            return token !== '';
+        });
+        var output = '';
+        var normal = [];
+        var changed = false;
+        function isByte(token) {
+            var value = parseInt(token, 10);
+            return String(value) === String(token) && value >= 0 && value <= 255;
+        }
+        function flushNormal() {
+            if (normal.length === 0) {
+                return;
+            }
+            output += '\x1b[' + normal.join(';') + 'm';
+            normal = [];
+        }
+        for (var i = 0; i < tokens.length;) {
+            var code = parseInt(tokens[i], 10);
+            var mode = parseInt(tokens[i + 1], 10);
+            if (i + 4 < tokens.length &&
+                isByte(tokens[i]) && isByte(tokens[i + 1]) && isByte(tokens[i + 2]) &&
+                (parseInt(tokens[i + 3], 10) === 38 || parseInt(tokens[i + 3], 10) === 48) &&
+                parseInt(tokens[i + 4], 10) === 2) {
+                flushNormal();
+                output += '\x1b[' + [
+                    parseInt(tokens[i + 3], 10), 2, tokens[i], tokens[i + 1], tokens[i + 2]
+                ].join(';') + 'm';
+                i += 5;
+                changed = true;
+                continue;
+            }
+            if ((code === 38 || code === 48) && mode === 2 && i + 4 < tokens.length) {
+                flushNormal();
+                output += '\x1b[' + [
+                    code, mode, tokens[i + 2], tokens[i + 3], tokens[i + 4]
+                ].join(';') + 'm';
+                i += 5;
+                changed = true;
+                continue;
+            }
+            if ((code === 38 || code === 48) && mode === 5 && i + 2 < tokens.length) {
+                flushNormal();
+                output += '\x1b[' + [code, mode, tokens[i + 2]].join(';') + 'm';
+                i += 3;
+                changed = true;
+                continue;
+            }
+            normal.push(tokens[i]);
+            i++;
+        }
+        flushNormal();
+        return changed ? output : match;
+    };
+    Ansi.prototype.NormalizeSgrText = function (text) {
+        var combined = this._SgrFragment + text;
+        var lastEsc = combined.lastIndexOf('\x1b[');
+        var tail;
+        this._SgrFragment = '';
+        if (combined.charAt(combined.length - 1) === '\x1b') {
+            this._SgrFragment = '\x1b';
+            combined = combined.slice(0, -1);
+            lastEsc = combined.lastIndexOf('\x1b[');
+        }
+        if (lastEsc >= 0) {
+            tail = combined.slice(lastEsc + 2);
+            if (!/[\x40-\x7e]/.test(tail)) {
+                this._SgrFragment = combined.slice(lastEsc);
+                combined = combined.slice(0, lastEsc);
+            }
+        }
+        var that = this;
+        return combined.replace(/\x1b\[([0-9;:]*)m/g, function (match, params) {
+            return that.NormalizeSgrParams(match, params);
+        });
+    };
     Ansi.prototype.Write = function (text) {
+        if (this._NormalizeSgr && typeof text === 'string' &&
+            (text.indexOf('\x1b[') >= 0 || this._SgrFragment !== '')) {
+            text = this.NormalizeSgrText(text);
+            if (text === '') {
+                return;
+            }
+        }
         if (this._Crt.Atari || this._Crt.C64) {
             this._Crt.Write(text);
         }

@@ -43,6 +43,8 @@ class Ansi {
     private _AnsiParserState: AnsiParserState = AnsiParserState.None;
     private _AnsiXY: Point = new Point(1, 1);
     private _Crt: Crt;
+    private _NormalizeSgr: boolean = true;
+    private _SgrFragment: string = '';
 
     constructor(crt: Crt) {
         this._Crt = crt;
@@ -1169,7 +1171,146 @@ class Ansi {
     ////    return '';
     ////}
 
+    /// <summary>
+    /// Whether to repair non-standard SGR colour sequences before parsing.
+    /// </summary>
+    public get NormalizeSgr(): boolean {
+        return this._NormalizeSgr;
+    }
+
+    public set NormalizeSgr(value: boolean) {
+        this._NormalizeSgr = value;
+        if (!value) { this._SgrFragment = ''; }
+    }
+
+    /// <summary>
+    /// Rewrites one SGR parameter list into a form the parser below accepts.
+    /// </summary>
+    /// <remarks>
+    /// The parser handles well-formed 38;2;r;g;b and 38;5;n. Real BBS output
+    /// is not always well-formed - colon-delimited variants (38:2:r:g:b) are
+    /// common, and some servers emit the colour bytes ahead of the introducer
+    /// instead of after it. Rather than loosening the parser and risking
+    /// mis-reads of valid input, non-standard forms are rewritten here into
+    /// the canonical form first.
+    ///
+    /// Each recognised run is emitted as its own CSI ... m, with surrounding
+    /// plain attributes flushed around it, so ordering is preserved.
+    /// Returns the input unchanged when nothing needed rewriting.
+    /// </remarks>
+    private NormalizeSgrParams(match: string, params: string): string {
+        var tokens: string[] = String(params || '').replace(/:/g, ';').split(';').filter(function (token: string): boolean {
+            return token !== '';
+        });
+        var output: string = '';
+        var normal: string[] = [];
+        var changed: boolean = false;
+
+        function isByte(token: string): boolean {
+            var value: number = parseInt(token, 10);
+            return String(value) === String(token) && value >= 0 && value <= 255;
+        }
+
+        function flushNormal(): void {
+            if (normal.length === 0) { return; }
+            output += '\x1b[' + normal.join(';') + 'm';
+            normal = [];
+        }
+
+        for (var i: number = 0; i < tokens.length;) {
+            var code: number = parseInt(tokens[i], 10);
+            var mode: number = parseInt(tokens[i + 1], 10);
+
+            // Colour bytes ahead of the introducer: r;g;b;38;2 -> 38;2;r;g;b
+            if (i + 4 < tokens.length &&
+                isByte(tokens[i]) && isByte(tokens[i + 1]) && isByte(tokens[i + 2]) &&
+                (parseInt(tokens[i + 3], 10) === 38 || parseInt(tokens[i + 3], 10) === 48) &&
+                parseInt(tokens[i + 4], 10) === 2) {
+                flushNormal();
+                // Keep the introducer that was actually sent. Hardcoding 38
+                // here would silently repaint a background colour as the
+                // foreground.
+                output += '\x1b[' + [
+                    parseInt(tokens[i + 3], 10), 2, tokens[i], tokens[i + 1], tokens[i + 2]
+                ].join(';') + 'm';
+                i += 5;
+                changed = true;
+                continue;
+            }
+
+            // Canonical 24-bit: 38;2;r;g;b / 48;2;r;g;b
+            if ((code === 38 || code === 48) && mode === 2 && i + 4 < tokens.length) {
+                flushNormal();
+                output += '\x1b[' + [
+                    code, mode, tokens[i + 2], tokens[i + 3], tokens[i + 4]
+                ].join(';') + 'm';
+                i += 5;
+                changed = true;
+                continue;
+            }
+
+            // Canonical 256-colour: 38;5;n / 48;5;n
+            if ((code === 38 || code === 48) && mode === 5 && i + 2 < tokens.length) {
+                flushNormal();
+                output += '\x1b[' + [code, mode, tokens[i + 2]].join(';') + 'm';
+                i += 3;
+                changed = true;
+                continue;
+            }
+
+            normal.push(tokens[i]);
+            i++;
+        }
+
+        flushNormal();
+        return changed ? output : match;
+    }
+
+    /// <summary>
+    /// Applies NormalizeSgrParams across a chunk of incoming text, holding
+    /// back any trailing partial escape sequence until the rest arrives.
+    /// </summary>
+    /// <remarks>
+    /// Network reads split wherever they like, so a CSI ... m can straddle
+    /// two calls. Rewriting half a sequence would corrupt it, so an
+    /// incomplete tail is buffered and prepended to the next chunk.
+    /// </remarks>
+    private NormalizeSgrText(text: string): string {
+        var combined: string = this._SgrFragment + text;
+        var lastEsc: number = combined.lastIndexOf('\x1b[');
+        var tail: string;
+
+        this._SgrFragment = '';
+
+        // A trailing bare ESC cannot be classified yet.
+        if (combined.charAt(combined.length - 1) === '\x1b') {
+            this._SgrFragment = '\x1b';
+            combined = combined.slice(0, -1);
+            lastEsc = combined.lastIndexOf('\x1b[');
+        }
+
+        // A trailing CSI with no final byte yet is still being received.
+        if (lastEsc >= 0) {
+            tail = combined.slice(lastEsc + 2);
+            if (!/[\x40-\x7e]/.test(tail)) {
+                this._SgrFragment = combined.slice(lastEsc);
+                combined = combined.slice(0, lastEsc);
+            }
+        }
+
+        var that = this;
+        return combined.replace(/\x1b\[([0-9;:]*)m/g, function (match: string, params: string): string {
+            return that.NormalizeSgrParams(match, params);
+        });
+    }
+
     public Write(text: string): void {
+        if (this._NormalizeSgr && typeof text === 'string' &&
+            (text.indexOf('\x1b[') >= 0 || this._SgrFragment !== '')) {
+            text = this.NormalizeSgrText(text);
+            if (text === '') { return; }
+        }
+
         // Check for Atari/C64 mode, which doesn't use ANSI
         if (this._Crt.Atari || this._Crt.C64) {
             this._Crt.Write(text);
