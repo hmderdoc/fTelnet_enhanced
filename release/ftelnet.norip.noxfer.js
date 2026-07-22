@@ -1431,7 +1431,8 @@ var Crt = (function () {
         this._AllowDynamicFontResize = true;
         this._Atari = false;
         this._ATASCIIEscaped = false;
-        this._AudioContext = new AudioContext();
+        this._AudioContext = null;
+        this._AudioMasterGain = null;
         this._BareLFtoCRLF = false;
         this._BlinkHidden = false;
         this._C64 = false;
@@ -1442,6 +1443,9 @@ var Crt = (function () {
         this._LastChar = 0x00;
         this._LocalEcho = false;
         this._PlaySoundQueue = [];
+        this._BellEnabled = true;
+        this._BellVolume = 0.2;
+        this._SoundVolume = 0.2;
         this._ScreenSize = new Point(80, 25);
         this._ScrollbackPosition = -1;
         this._ScrollbackSize = 250;
@@ -2450,16 +2454,46 @@ var Crt = (function () {
     Crt.prototype.OutputBenchmarks = function () {
         Benchmarks.Alert();
     };
+    Crt.prototype.GetAudioContext = function () {
+        if (this._AudioContext === null) {
+            var Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) {
+                return null;
+            }
+            try {
+                this._AudioContext = new Ctor();
+                this._AudioMasterGain = this._AudioContext.createGain();
+                this._AudioMasterGain.gain.value = 1;
+                this._AudioMasterGain.connect(this._AudioContext.destination);
+            }
+            catch (err) {
+                this._AudioContext = null;
+                this._AudioMasterGain = null;
+                return null;
+            }
+        }
+        if (this._AudioContext.state === 'suspended') {
+            try {
+                this._AudioContext.resume();
+            }
+            catch (err) { }
+        }
+        return this._AudioContext;
+    };
     Crt.prototype.PlayNextSound = function () {
         if (this._PlaySoundQueue.length === 0) {
-            console.log('Aborting PlayNextSound, nothing left in queue');
+            return;
+        }
+        var ctx = this.GetAudioContext();
+        if (ctx === null) {
+            this._PlaySoundQueue = [];
             return;
         }
         var freq = this._PlaySoundQueue[0].x;
         var duration = this._PlaySoundQueue[0].y;
-        var osc = this._AudioContext.createOscillator();
-        var gain = this._AudioContext.createGain();
-        osc.connect(gain).connect(this._AudioContext.destination);
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain).connect(this._AudioMasterGain);
         osc.frequency.value = freq;
         var that = this;
         osc.onended = function () {
@@ -2468,15 +2502,68 @@ var Crt = (function () {
                 that.PlayNextSound();
             }
         };
-        var startTime = this._AudioContext.currentTime;
+        var peak = this._SoundVolume;
+        var startTime = ctx.currentTime;
         var endTime = startTime + (duration / 1000);
+        var ramp = Math.min(0.05, (duration / 1000) / 4);
         gain.gain.setValueAtTime(0, startTime);
-        gain.gain.linearRampToValueAtTime(1, startTime + 0.05);
-        gain.gain.setValueAtTime(1, endTime - 0.05);
+        gain.gain.linearRampToValueAtTime(peak, startTime + ramp);
+        gain.gain.setValueAtTime(peak, endTime - ramp);
         gain.gain.linearRampToValueAtTime(0, endTime);
         osc.start(startTime);
         osc.stop(endTime);
     };
+    Crt.prototype.Bell = function () {
+        if (!this._BellEnabled) {
+            return;
+        }
+        var ctx = this.GetAudioContext();
+        if (ctx === null) {
+            return;
+        }
+        var startTime = ctx.currentTime;
+        var duration = 0.16;
+        var endTime = startTime + duration;
+        var gain = ctx.createGain();
+        gain.connect(this._AudioMasterGain);
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(this._BellVolume, startTime + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+        var partials = [[880, 1], [1760, 0.35]];
+        for (var i = 0; i < partials.length; i++) {
+            var osc = ctx.createOscillator();
+            var partialGain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = partials[i][0];
+            partialGain.gain.value = partials[i][1];
+            osc.connect(partialGain).connect(gain);
+            osc.start(startTime);
+            osc.stop(endTime);
+        }
+    };
+    Object.defineProperty(Crt.prototype, "BellEnabled", {
+        get: function () {
+            return this._BellEnabled;
+        },
+        set: function (value) {
+            this._BellEnabled = value;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Crt.prototype, "SoundVolume", {
+        get: function () {
+            return this._AudioMasterGain === null ? 1 : this._AudioMasterGain.gain.value;
+        },
+        set: function (value) {
+            var clamped = Math.max(0, Math.min(1, value));
+            if (this.GetAudioContext() !== null && this._AudioMasterGain !== null) {
+                this._AudioMasterGain.gain.value = clamped;
+            }
+        },
+        enumerable: true,
+        configurable: true
+    });
     Crt.prototype.PlaySound = function (freq, duration) {
         this._PlaySoundQueue.push(new Point(freq, duration));
         if (this._PlaySoundQueue.length === 1) {
@@ -2931,7 +3018,7 @@ var Crt = (function () {
                 i += 0;
             }
             else if (text.charCodeAt(i) === 0x07) {
-                this.PlaySound(800, 200);
+                this.Bell();
             }
             else if (text.charCodeAt(i) === 0x08) {
                 this.FastWrite(Buf, this.WhereXA(), this.WhereYA(), this._CharInfo);
@@ -3100,7 +3187,7 @@ var Crt = (function () {
                 this.InsLine();
             }
             else if ((text.charCodeAt(i) === 0xFD) && (!this._ATASCIIEscaped)) {
-                this.PlaySound(800, 200);
+                this.Bell();
             }
             else if ((text.charCodeAt(i) === 0xFE) && (!this._ATASCIIEscaped)) {
                 this.FastWrite(Buf, this.WhereXA(), this.WhereYA(), this._CharInfo);
@@ -3170,7 +3257,7 @@ var Crt = (function () {
                 this.TextColor(Crt.PETSCII_WHITE);
             }
             else if (text.charCodeAt(i) === 0x07) {
-                this.PlaySound(800, 200);
+                this.Bell();
             }
             else if (text.charCodeAt(i) === 0x08) {
                 console.log('PETSCII 0x08');

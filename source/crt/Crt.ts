@@ -73,7 +73,11 @@ class Crt {
     private _AllowDynamicFontResize: boolean = true;
     private _Atari: boolean = false;
     private _ATASCIIEscaped: boolean = false;
-    private _AudioContext: AudioContext = new AudioContext();
+    // Created lazily by GetAudioContext(). Constructing an AudioContext
+    // before the first user gesture leaves it 'suspended' under browser
+    // autoplay policy, which silently swallows the first sound.
+    private _AudioContext: AudioContext | null = null;
+    private _AudioMasterGain: GainNode | null = null;
     private _BareLFtoCRLF: boolean = false;
     private _BlinkHidden: boolean = false;
     private _Buffer: CharInfo[][];
@@ -92,6 +96,9 @@ class Crt {
     private _MouseDownPoint: Point;
     private _MouseMovePoint: Point;
     private _PlaySoundQueue: Point[] = [];
+    private _BellEnabled: boolean = true;
+    private _BellVolume: number = 0.2;
+    private _SoundVolume: number = 0.2;
     private _ReportMouse: boolean;
     private _ReportMouseSgr: boolean;
     private _ScreenSize: Point = new Point(80, 25);
@@ -1302,10 +1309,44 @@ class Crt {
         //alert(text);
     }
 
+    /// <summary>
+    /// Lazily creates the AudioContext and the master gain every sound is
+    /// routed through. Returns null if Web Audio is unavailable.
+    /// </summary>
+    private GetAudioContext(): AudioContext | null {
+        if (this._AudioContext === null) {
+            var Ctor: any = (<any>window).AudioContext || (<any>window).webkitAudioContext;
+            if (!Ctor) { return null; }
+            try {
+                this._AudioContext = new Ctor();
+                this._AudioMasterGain = this._AudioContext.createGain();
+                this._AudioMasterGain.gain.value = 1;
+                this._AudioMasterGain.connect(this._AudioContext.destination);
+            } catch (err) {
+                this._AudioContext = null;
+                this._AudioMasterGain = null;
+                return null;
+            }
+        }
+
+        // An AudioContext created before a user gesture starts suspended.
+        // Resuming is a no-op once it is already running.
+        if (this._AudioContext.state === 'suspended') {
+            try { this._AudioContext.resume(); } catch (err) { /* ignore */ }
+        }
+
+        return this._AudioContext;
+    }
+
     private PlayNextSound(): void {
         // Abort if the queue is empty
         if (this._PlaySoundQueue.length === 0) {
-            console.log('Aborting PlayNextSound, nothing left in queue');
+            return;
+        }
+
+        var ctx: AudioContext | null = this.GetAudioContext();
+        if (ctx === null) {
+            this._PlaySoundQueue = [];
             return;
         }
 
@@ -1314,9 +1355,9 @@ class Crt {
         var duration: number = this._PlaySoundQueue[0].y;
 
         // Setup the OscillatorNode and GainNode
-        var osc: OscillatorNode = this._AudioContext.createOscillator();
-        var gain: GainNode = this._AudioContext.createGain();
-        osc.connect(gain).connect(this._AudioContext.destination);
+        var osc: OscillatorNode = ctx.createOscillator();
+        var gain: GainNode = ctx.createGain();
+        osc.connect(gain).connect(<GainNode>this._AudioMasterGain);
         osc.frequency.value = freq;
 
         // Setup the callback
@@ -1328,17 +1369,87 @@ class Crt {
             }
         };
 
-        // Play the sound for the requested duration
-        // Use linearRampToValueAtTime to ramp up from 0 to 1 at the start, and down from 1 to 0
-        // at the end, to avoid clicking that occurs when ramping up and down is not used.
-        var startTime: number = this._AudioContext.currentTime;
+        // Play the sound for the requested duration.
+        // Ramp in and out rather than switching the gain instantly, to avoid
+        // the click that a hard edge produces. Peak is _SoundVolume, not 1:
+        // a full-scale square-edged tone is painfully loud on headphones.
+        var peak: number = this._SoundVolume;
+        var startTime: number = ctx.currentTime;
         var endTime: number = startTime + (duration / 1000);
+        var ramp: number = Math.min(0.05, (duration / 1000) / 4);
         gain.gain.setValueAtTime(0, startTime);
-        gain.gain.linearRampToValueAtTime(1, startTime + 0.05);
-        gain.gain.setValueAtTime(1, endTime - 0.05);
+        gain.gain.linearRampToValueAtTime(peak, startTime + ramp);
+        gain.gain.setValueAtTime(peak, endTime - ramp);
         gain.gain.linearRampToValueAtTime(0, endTime);
         osc.start(startTime);
         osc.stop(endTime);
+    }
+
+    /// <summary>
+    /// The terminal bell (BEL, ATASCII 0xFD, PETSCII 0x07).
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not PlaySound(800, 200). That is a 200ms full-scale sine
+    /// at a single frequency, which is about as close to a hearing-test tone
+    /// as you can get, and it is the single most complained-about thing in
+    /// fTelnet. This is a short two-partial blip with an exponential decay,
+    /// so it reads as a notification rather than an alarm. It also bypasses
+    /// the PlaySound queue, so a burst of bells cannot stack into a drone.
+    /// </remarks>
+    public Bell(): void {
+        if (!this._BellEnabled) { return; }
+
+        var ctx: AudioContext | null = this.GetAudioContext();
+        if (ctx === null) { return; }
+
+        var startTime: number = ctx.currentTime;
+        var duration: number = 0.16;
+        var endTime: number = startTime + duration;
+
+        var gain: GainNode = ctx.createGain();
+        gain.connect(<GainNode>this._AudioMasterGain);
+
+        // Percussive envelope: near-instant attack, exponential decay.
+        // exponentialRampToValueAtTime cannot target 0, hence the small floor.
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(this._BellVolume, startTime + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+        // Two partials an octave apart, the upper one quieter, gives the
+        // strike a bit of body instead of a bare sine.
+        var partials: number[][] = [[880, 1], [1760, 0.35]];
+        for (var i: number = 0; i < partials.length; i++) {
+            var osc: OscillatorNode = ctx.createOscillator();
+            var partialGain: GainNode = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = partials[i][0];
+            partialGain.gain.value = partials[i][1];
+            osc.connect(partialGain).connect(gain);
+            osc.start(startTime);
+            osc.stop(endTime);
+        }
+    }
+
+    public get BellEnabled(): boolean {
+        return this._BellEnabled;
+    }
+
+    public set BellEnabled(value: boolean) {
+        this._BellEnabled = value;
+    }
+
+    /// <summary>
+    /// Master output level for the bell and for PlaySound, 0 to 1.
+    /// </summary>
+    public get SoundVolume(): number {
+        return this._AudioMasterGain === null ? 1 : this._AudioMasterGain.gain.value;
+    }
+
+    public set SoundVolume(value: number) {
+        var clamped: number = Math.max(0, Math.min(1, value));
+        if (this.GetAudioContext() !== null && this._AudioMasterGain !== null) {
+            this._AudioMasterGain.gain.value = clamped;
+        }
     }
 
     public PlaySound(freq: number, duration: number): void {
@@ -2015,7 +2126,7 @@ class Crt {
                 // NULL, ignore
                 i += 0; // Make JSLint happy (doesn't like empty block)
             } else if (text.charCodeAt(i) === 0x07) {
-                this.PlaySound(800, 200);
+                this.Bell();
             } else if (text.charCodeAt(i) === 0x08) {
                 // Backspace, need to flush buffer before moving cursor
                 this.FastWrite(Buf, this.WhereXA(), this.WhereYA(), this._CharInfo);
@@ -2218,7 +2329,7 @@ class Crt {
                 this.GotoXY(X, Y);
                 this.InsLine();
             } else if ((text.charCodeAt(i) === 0xFD) && (!this._ATASCIIEscaped)) {
-                this.PlaySound(800, 200);
+                this.Bell();
             } else if ((text.charCodeAt(i) === 0xFE) && (!this._ATASCIIEscaped)) {
                 // Delete character, need to flush buffer before doing so
                 this.FastWrite(Buf, this.WhereXA(), this.WhereYA(), this._CharInfo);
@@ -2304,7 +2415,7 @@ class Crt {
                 this.TextColor(Crt.PETSCII_WHITE);
             } else if (text.charCodeAt(i) === 0x07) {
                 // Beep (extra, not documented)
-                this.PlaySound(800, 200);
+                this.Bell();
             } else if (text.charCodeAt(i) === 0x08) {
                 // TODO Disables changing the character set using the SHIFT + Commodore key combination. 
                 console.log('PETSCII 0x08');
