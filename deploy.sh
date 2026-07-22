@@ -57,9 +57,13 @@ cp "$SRC" "$DEST"
 # Everything below is fetched at runtime relative to the bundle's own URL,
 # so it all has to sit beside it. Only refreshed when changed, so a repeat
 # deploy is quiet.
-cp -u release/fonts/*.png        "$DEST_DIR/fonts/"
-cp -u release/ftelnet.css        "$DEST_DIR/"
-cp -ur release/keyboard/.        "$DEST_DIR/keyboard/"
+cp -u release/fonts/*.png              "$DEST_DIR/fonts/"
+cp -u release/ftelnet.css              "$DEST_DIR/"
+# Only the minified keyboard CSS is ever requested; the .less sources and
+# sourcemaps beside it are build inputs and do not belong in a served tree.
+cp -u release/keyboard/*.min.css       "$DEST_DIR/keyboard/"
+mkdir -p "$DEST_DIR/keyboard/img"
+cp -u release/keyboard/img/*           "$DEST_DIR/keyboard/img/"
 
 echo "==> Installed $SRC"
 echo "    -> $DEST"
