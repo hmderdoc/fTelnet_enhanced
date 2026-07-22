@@ -29,7 +29,7 @@ class Ansi {
     public onescCTDA: IEvent = new TypedEvent();
     public onescFontState: IEvent = new TypedEvent();
     public onescModeQuery: IEvent = new TypedEvent();
-    public onescUnknownPrivateDsr: IEvent = new TypedEvent();
+    public onescAudioState: IEvent = new TypedEvent();
     public onesc5n: IEvent = new TypedEvent();
     public onesc6n: IEvent = new TypedEvent();
     public onesc8t: IEvent = new TypedEvent();
@@ -823,13 +823,34 @@ class Ansi {
                 // These MUST be answered. cterm_lib's query() blocks on
                 // inkey(0, 3000) waiting for a reply and consumes whatever the
                 // user types in the meantime, so an unanswered query is a
-                // three second freeze that also eats keystrokes. Anything the
-                // reported CTerm revision implies has to have an answer here.
+                // three second freeze that also eats keystrokes.
+                //
+                // Answer only the queries this terminal actually owns and that
+                // cterm_lib issues at the CTerm revision we report: font state
+                // (=1) and mode (=2). NOT a catch-all: =7 is the audio-state
+                // poll, which belongs to whatever host layer implements the
+                // SyncTERM audio sink, and answering it here with a generic
+                // reply corrupts that door's backpressure. Anything else falls
+                // through to be logged, the same as an unknown sequence -
+                // nothing cterm_lib blocks on at this revision reaches here.
                 if ((this._AnsiParams.length >= 1) && (this._AnsiParams[0].charAt(0) === '=')) {
                     switch (parseInt(this._AnsiParams[0].substring(1), 10)) {
                         case 1: this.onescFontState.trigger(); break;
                         case 2: this.onescModeQuery.trigger(); break;
-                        default: this.onescUnknownPrivateDsr.trigger(); break;
+                        case 7:
+                            // Audio-state poll. The terminal core has no audio
+                            // sink, so it forwards the request to whatever host
+                            // layer does, carrying the channel (-1 = all).
+                            var audioChannel: number = -1;
+                            if (this._AnsiParams.length >= 2) {
+                                var parsed: number = parseInt(this._AnsiParams[1], 10);
+                                if (!isNaN(parsed)) { audioChannel = parsed; }
+                            }
+                            this.onescAudioState.trigger(audioChannel);
+                            break;
+                        default:
+                            console.log('Unhandled CTerm private DSR: CSI ' + this._AnsiParams[0] + ' n');
+                            break;
                     }
                     break;
                 }

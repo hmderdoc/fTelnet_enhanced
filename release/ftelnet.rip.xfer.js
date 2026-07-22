@@ -978,7 +978,7 @@ var Ansi = (function () {
         this.onescCTDA = new TypedEvent();
         this.onescFontState = new TypedEvent();
         this.onescModeQuery = new TypedEvent();
-        this.onescUnknownPrivateDsr = new TypedEvent();
+        this.onescAudioState = new TypedEvent();
         this.onesc5n = new TypedEvent();
         this.onesc6n = new TypedEvent();
         this.onesc8t = new TypedEvent();
@@ -1447,8 +1447,18 @@ var Ansi = (function () {
                         case 2:
                             this.onescModeQuery.trigger();
                             break;
+                        case 7:
+                            var audioChannel = -1;
+                            if (this._AnsiParams.length >= 2) {
+                                var parsed = parseInt(this._AnsiParams[1], 10);
+                                if (!isNaN(parsed)) {
+                                    audioChannel = parsed;
+                                }
+                            }
+                            this.onescAudioState.trigger(audioChannel);
+                            break;
                         default:
-                            this.onescUnknownPrivateDsr.trigger();
+                            console.log('Unhandled CTerm private DSR: CSI ' + this._AnsiParams[0] + ' n');
                             break;
                     }
                     break;
@@ -10942,6 +10952,7 @@ var fTelnetClient = (function () {
         this._LastTimer = 0;
         this._LoadingProxySettings = 0;
         this._UseModernScrollback = false;
+        this.AudioStateProvider = null;
         if (typeof options === 'undefined') {
             var Message = 'fTelnet Error: The options parameter is required (pass in an fTelnetOptions object)';
             alert(Message);
@@ -11056,7 +11067,7 @@ var fTelnetClient = (function () {
         this._Ansi.onescCTDA.on(function () { _this.OnAnsiCTDA(); });
         this._Ansi.onescFontState.on(function () { _this.OnAnsiFontState(); });
         this._Ansi.onescModeQuery.on(function () { _this.OnAnsiModeQuery(); });
-        this._Ansi.onescUnknownPrivateDsr.on(function () { _this.OnAnsiUnknownPrivateDsr(); });
+        this._Ansi.onescAudioState.on(function (channel) { _this.OnAnsiAudioState(channel); });
         this._Ansi.onesc5n.on(function () { _this.OnAnsiESC5n(); });
         this._Ansi.onesc6n.on(function () { _this.OnAnsiESC6n(); });
         this._Ansi.onesc8t.on(function (columns, rows) { _this.OnAnsiESC8t(columns, rows); });
@@ -11638,14 +11649,20 @@ var fTelnetClient = (function () {
         }
         this._Connection.writeString('\x1B[=2n');
     };
-    fTelnetClient.prototype.OnAnsiUnknownPrivateDsr = function () {
+    fTelnetClient.prototype.OnAnsiAudioState = function (channel) {
         if (typeof this._Connection === 'undefined') {
             return;
         }
         if (!this._Connection.connected) {
             return;
         }
-        this._Connection.writeString('\x1B[=0n');
+        if (this.AudioStateProvider === null) {
+            return;
+        }
+        var reply = this.AudioStateProvider(channel);
+        if (reply !== null && reply !== '') {
+            this._Connection.writeString(reply);
+        }
     };
     fTelnetClient.prototype.OnAnsiESC5n = function () {
         if (typeof this._Connection === 'undefined') {

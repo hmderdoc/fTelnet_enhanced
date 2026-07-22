@@ -212,7 +212,7 @@ class fTelnetClient {
         this._Ansi.onescCTDA.on((): void => { this.OnAnsiCTDA(); });
         this._Ansi.onescFontState.on((): void => { this.OnAnsiFontState(); });
         this._Ansi.onescModeQuery.on((): void => { this.OnAnsiModeQuery(); });
-        this._Ansi.onescUnknownPrivateDsr.on((): void => { this.OnAnsiUnknownPrivateDsr(); });
+        this._Ansi.onescAudioState.on((channel: number): void => { this.OnAnsiAudioState(channel); });
         this._Ansi.onesc5n.on((): void => { this.OnAnsiESC5n(); });
         this._Ansi.onesc6n.on((): void => { this.OnAnsiESC6n(); });
         this._Ansi.onesc8t.on((columns: number, rows: number): void => { this.OnAnsiESC8t(columns, rows); });
@@ -639,6 +639,14 @@ class fTelnetClient {
     /// Exposed so hosts can read and adjust settings after construction
     /// without reaching into private state.
     /// </remarks>
+    /// <summary>
+    /// Optional host hook that answers CSI = 7 [; channel] n audio-state
+    /// polls. Given the requested channel (-1 = all), returns the full reply
+    /// string to send, or null to stay silent. Set by a host that implements
+    /// the SyncTERM audio APCs; left null when there is no audio sink.
+    /// </summary>
+    public AudioStateProvider: ((channel: number) => string | null) | null = null;
+
     public get Options(): fTelnetOptions {
         return this._Options;
     }
@@ -889,17 +897,25 @@ class fTelnetClient {
     }
 
     /// <summary>
-    /// Any other CSI = Ps n we do not implement.
+    /// CSI = 7 [; channel] n  audio-state poll (channel -1 = all).
     /// </summary>
     /// <remarks>
-    /// Still answered, with the bare form, rather than left to time out.
-    /// A wrong-but-prompt answer costs a feature; silence costs three seconds
-    /// of frozen terminal and eaten keystrokes.
+    /// The terminal has no audio sink of its own; a host that implements the
+    /// SyncTERM audio APCs supplies AudioStateProvider, which returns the full
+    /// reply string for the requested channel (or null to stay silent). This
+    /// is a door's backpressure cross-check, so the reply must reflect real
+    /// pending-audio state, not a placeholder. With no provider set there is
+    /// no audio sink, so the request is ignored.
     /// </remarks>
-    private OnAnsiUnknownPrivateDsr(): void {
+    private OnAnsiAudioState(channel: number): void {
         if (typeof this._Connection === 'undefined') { return; }
         if (!this._Connection.connected) { return; }
-        this._Connection.writeString('\x1B[=0n');
+        if (this.AudioStateProvider === null) { return; }
+
+        var reply: string | null = this.AudioStateProvider(channel);
+        if (reply !== null && reply !== '') {
+            this._Connection.writeString(reply);
+        }
     }
 
     private OnAnsiESC5n(): void {
