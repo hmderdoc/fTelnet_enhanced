@@ -23,6 +23,23 @@ class CrtFont {
 
     public static TRANSPARENT_CHARCODE: number = 1000;
 
+    /// <summary>
+    /// Upper bounds on the two glyph caches.
+    /// </summary>
+    /// <remarks>
+    /// The cache keys include Fore24 and Back24. With the 16-colour palette
+    /// that tops out at a few hundred entries, so leaving the caches
+    /// unbounded was fine. With 24-bit colour it is not: every distinct
+    /// foreground/background pair mints a new entry, and _CharsMap entries
+    /// are whole canvases. A gradient-heavy ANSI can allocate thousands of
+    /// them in seconds, and the tab grows until it is killed.
+    ///
+    /// These are sized to comfortably hold a full screen's worth of distinct
+    /// colour pairs, so ordinary rendering still hits cache.
+    /// </remarks>
+    public static MAX_CHARS_MAP_ENTRIES: number = 48;
+    public static MAX_CHAR_MAP_ENTRIES: number = 4096;
+
     // Public variables
     public static ANSI_COLOURS: number[] = [
         0x000000, 0x0000A8, 0x00A800, 0x00A8A8, 0xA80000, 0xA800A8, 0xA85400, 0xA8A8A8,
@@ -53,6 +70,10 @@ class CrtFont {
     private _CanvasContext: CanvasRenderingContext2D;
     private _CharMap: ImageData[];
     private _CharsMap: HTMLCanvasElement[];
+    // Insertion/most-recently-used order for the two caches above, so they
+    // can be bounded. See TouchCache().
+    private _CharMapLru: string[] = [];
+    private _CharsMapLru: string[] = [];
     private _Loading: number;
     private _Name: string;
     private _NewName: string;
@@ -77,6 +98,21 @@ class CrtFont {
             var CanvasContext = this._Canvas.getContext('2d');
             if (CanvasContext !== null) { this._CanvasContext = CanvasContext; } // TODOX Handle error when CanvasContext is null
             this.Load(this._Name, this._Size.x, this._Size.y);
+        }
+    }
+
+    /// <summary>
+    /// Records a cache key as most-recently-used and evicts the oldest
+    /// entries until the cache is back within its limit.
+    /// </summary>
+    private TouchCache(cache: any, lru: string[], key: string, max: number): void {
+        var idx: number = lru.indexOf(key);
+        if (idx !== -1) { lru.splice(idx, 1); }
+        lru.push(key);
+
+        while (lru.length > max) {
+            var evicted: string = <string>lru.shift();
+            delete cache[evicted];
         }
     }
 
@@ -160,6 +196,10 @@ class CrtFont {
         }
 
         // Return the character if we have it
+        // Touch on the way out so both a hit and a fresh insert count as a
+        // use, which is what makes this LRU rather than plain FIFO.
+        this.TouchCache(this._CharMap, this._CharMapLru, CharMapKey, CrtFont.MAX_CHAR_MAP_ENTRIES);
+
         return this._CharMap[CharMapKey];
     }
 
@@ -230,6 +270,8 @@ class CrtFont {
         }
 
         // Return the character if we have it
+        this.TouchCache(this._CharsMap, this._CharsMapLru, CharsMapKey, CrtFont.MAX_CHARS_MAP_ENTRIES);
+
         return this._CharsMap[CharsMapKey];
     }
 

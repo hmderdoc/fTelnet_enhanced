@@ -3558,6 +3558,8 @@ var Crt = (function () {
 var CrtFont = (function () {
     function CrtFont() {
         this.onchange = new TypedEvent();
+        this._CharMapLru = [];
+        this._CharsMapLru = [];
         this._CharMap = [];
         this._CharsMap = [];
         this._Name = 'CP437';
@@ -3574,6 +3576,17 @@ var CrtFont = (function () {
             this.Load(this._Name, this._Size.x, this._Size.y);
         }
     }
+    CrtFont.prototype.TouchCache = function (cache, lru, key, max) {
+        var idx = lru.indexOf(key);
+        if (idx !== -1) {
+            lru.splice(idx, 1);
+        }
+        lru.push(key);
+        while (lru.length > max) {
+            var evicted = lru.shift();
+            delete cache[evicted];
+        }
+    };
     CrtFont.prototype.GetChar = function (charCode, charInfo) {
         if (this._Loading > 0) {
             return undefined;
@@ -3636,6 +3649,7 @@ var CrtFont = (function () {
             }
             this._CharMap[CharMapKey] = NewChar;
         }
+        this.TouchCache(this._CharMap, this._CharMapLru, CharMapKey, CrtFont.MAX_CHAR_MAP_ENTRIES);
         return this._CharMap[CharMapKey];
     };
     CrtFont.prototype.GetChars = function (charInfo) {
@@ -3692,6 +3706,7 @@ var CrtFont = (function () {
             NewContext.putImageData(NewChars, 0, 0);
             this._CharsMap[CharsMapKey] = NewCanvas;
         }
+        this.TouchCache(this._CharsMap, this._CharsMapLru, CharsMapKey, CrtFont.MAX_CHARS_MAP_ENTRIES);
         return this._CharsMap[CharsMapKey];
     };
     Object.defineProperty(CrtFont.prototype, "Height", {
@@ -3788,6 +3803,8 @@ var CrtFont = (function () {
         configurable: true
     });
     CrtFont.TRANSPARENT_CHARCODE = 1000;
+    CrtFont.MAX_CHARS_MAP_ENTRIES = 48;
+    CrtFont.MAX_CHAR_MAP_ENTRIES = 4096;
     CrtFont.ANSI_COLOURS = [
         0x000000, 0x0000A8, 0x00A800, 0x00A8A8, 0xA80000, 0xA800A8, 0xA85400, 0xA8A8A8,
         0x545454, 0x5454FC, 0x54FC54, 0x54FCFC, 0xFC5454, 0xFC54FC, 0xFCFC54, 0xFCFCFC
