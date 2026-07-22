@@ -111,6 +111,10 @@ class Crt {
     private _TempCanvasContext: CanvasRenderingContext2D;
     // Real canvases parked here while BeginOffscreenRender() is in effect.
     private _OffscreenSaved: { CanvasContext: CanvasRenderingContext2D, TempCanvas: HTMLCanvasElement, TempCanvasContext: CanvasRenderingContext2D } | null = null;
+    // Last Column Flag. Set after a character is written into the rightmost
+    // column; the line wrap it implies is deferred until the next printable
+    // character actually arrives. Cleared by any explicit cursor move.
+    private _PendingWrap: boolean = false;
     private _Transparent: Boolean = false;
     private _UseModernScrollback: Boolean = false;
     private _WindMin: number = 0;
@@ -712,6 +716,9 @@ class Crt {
         /// </remarks>
         /// <param name='AX'>The 1-based column to move to</param>
         /// <param name='AY'>The 1-based row to move to</param>
+        // Any explicit cursor move cancels a deferred wrap.
+        this._PendingWrap = false;
+
         if ((x >= 1) && (y >= 1) && ((x - 1 + this.WindMinX) <= this.WindMaxX) && ((y - 1 + this.WindMinY) <= this.WindMaxY)) {
             this._Cursor.Position = new Point(x, y);
         }
@@ -2356,6 +2363,7 @@ class Crt {
 
         for (var i: number = 0; i < text.length; i++) {
             var DoGoto: boolean = false;
+            var DeferWrap: boolean = false;
 
             if (text.charCodeAt(i) === 0x00) {
                 // NULL, ignore
@@ -2419,17 +2427,36 @@ class Crt {
 
                 Buf = '';
             } else if (text.charCodeAt(i) !== 0) {
+                // A character written into the rightmost column leaves the
+                // cursor there with the wrap deferred. Now that another
+                // printable character has arrived, take the wrap.
+                if (this._PendingWrap) {
+                    this._PendingWrap = false;
+                    X = 1;
+                    Y += 1;
+                    if (Y > this.WindRows) {
+                        Y = this.WindRows;
+                        this.ScrollUpWindow(1);
+                    }
+                    this.GotoXY(X, Y);
+                }
+
                 // Append character to buffer
                 Buf += String.fromCharCode(text.charCodeAt(i) & 0xFF);
 
-                // Check if we've passed the right edge of the window
+                // Check if we've reached the right edge of the window
                 if ((X + Buf.length) > this.WindCols) {
                     // We have, need to flush buffer before moving cursor
                     this.FastWrite(Buf, this.WhereXA(), this.WhereYA(), this._CharInfo);
                     Buf = '';
 
-                    X = 1;
-                    Y += 1;
+                    // Park on the last column and defer the wrap rather than
+                    // taking it now. Wrapping here would scroll the moment
+                    // the bottom-right cell is written, which is what makes
+                    // full-screen redraws jump on this terminal but not on
+                    // others. See _PendingWrap.
+                    X = this.WindCols;
+                    DeferWrap = true;
                     DoGoto = true;
                 }
             }
@@ -2446,6 +2473,9 @@ class Crt {
             }
 
             if (DoGoto) { this.GotoXY(X, Y); }
+
+            // GotoXY clears the flag, so set it after the move.
+            if (DeferWrap) { this._PendingWrap = true; DeferWrap = false; }
         }
 
         // Flush remaining text in buffer if we have any

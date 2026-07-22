@@ -1970,6 +1970,7 @@ var Crt = (function () {
         this._ScrollbackSize = 250;
         this._SkipRedrawWhenSameFontSize = false;
         this._OffscreenSaved = null;
+        this._PendingWrap = false;
         this._Transparent = false;
         this._UseModernScrollback = false;
         this._WindMin = 0;
@@ -2380,6 +2381,7 @@ var Crt = (function () {
         configurable: true
     });
     Crt.prototype.GotoXY = function (x, y) {
+        this._PendingWrap = false;
         if ((x >= 1) && (y >= 1) && ((x - 1 + this.WindMinX) <= this.WindMaxX) && ((y - 1 + this.WindMinY) <= this.WindMaxY)) {
             this._Cursor.Position = new Point(x, y);
         }
@@ -3715,6 +3717,7 @@ var Crt = (function () {
         var Buf = '';
         for (var i = 0; i < text.length; i++) {
             var DoGoto = false;
+            var DeferWrap = false;
             if (text.charCodeAt(i) === 0x00) {
                 i += 0;
             }
@@ -3769,12 +3772,22 @@ var Crt = (function () {
                 Buf = '';
             }
             else if (text.charCodeAt(i) !== 0) {
+                if (this._PendingWrap) {
+                    this._PendingWrap = false;
+                    X = 1;
+                    Y += 1;
+                    if (Y > this.WindRows) {
+                        Y = this.WindRows;
+                        this.ScrollUpWindow(1);
+                    }
+                    this.GotoXY(X, Y);
+                }
                 Buf += String.fromCharCode(text.charCodeAt(i) & 0xFF);
                 if ((X + Buf.length) > this.WindCols) {
                     this.FastWrite(Buf, this.WhereXA(), this.WhereYA(), this._CharInfo);
                     Buf = '';
-                    X = 1;
-                    Y += 1;
+                    X = this.WindCols;
+                    DeferWrap = true;
                     DoGoto = true;
                 }
             }
@@ -3786,6 +3799,10 @@ var Crt = (function () {
             }
             if (DoGoto) {
                 this.GotoXY(X, Y);
+            }
+            if (DeferWrap) {
+                this._PendingWrap = true;
+                DeferWrap = false;
             }
         }
         if (Buf.length > 0) {
