@@ -993,6 +993,7 @@ var Ansi = (function () {
         this._AnsiParams = [];
         this._AnsiParserState = AnsiParserState.None;
         this._AnsiXY = new Point(1, 1);
+        this._StringBuffer = '';
         this._NormalizeSgr = true;
         this._SgrFragment = '';
         this._Crt = crt;
@@ -1721,16 +1722,19 @@ var Ansi = (function () {
                     else if (text.charAt(i) === ']') {
                         this._Crt.Write(Buffer);
                         Buffer = '';
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     }
                     else if (text.charAt(i) === '^') {
                         this._Crt.Write(Buffer);
                         Buffer = '';
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     }
                     else if (text.charAt(i) === '_') {
                         this._Crt.Write(Buffer);
                         Buffer = '';
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     }
                     else if (text.charAt(i) === 'c') {
@@ -1762,11 +1766,13 @@ var Ansi = (function () {
                     else if (text.charAt(i) === 'P') {
                         this._Crt.Write(Buffer);
                         Buffer = '';
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     }
                     else if (text.charAt(i) === 'X') {
                         this._Crt.Write(Buffer);
                         Buffer = '';
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     }
                     else {
@@ -1864,23 +1870,23 @@ var Ansi = (function () {
                     if (text.charAt(i) === '\x1B') {
                         this._AnsiParserState = AnsiParserState.ReadingStringEscape;
                     }
-                    else {
-                        Buffer += text.charAt(i);
+                    else if (this._StringBuffer.length < Ansi.MAX_STRING_LENGTH) {
+                        this._StringBuffer += text.charAt(i);
                     }
                 }
                 else if (this._AnsiParserState === AnsiParserState.ReadingStringEscape) {
                     if (text.charAt(i) === '\\') {
-                        if (Sixel.IsSixel(Buffer)) {
-                            this._Crt.DrawSixel(Sixel.Decode(Buffer));
+                        if (Sixel.IsSixel(this._StringBuffer)) {
+                            this._Crt.DrawSixel(Sixel.Decode(this._StringBuffer));
                         }
                         else {
-                            console.log('Ansi.ts read string: ' + Buffer);
+                            console.log('Ansi.ts read string: ' + this._StringBuffer);
                         }
                     }
                     else {
-                        console.log('Ansi.ts unexpected post-ESC char while reading string: ' + text.charAt(i) + ' (Buffer=' + Buffer + ')');
+                        console.log('Ansi.ts unexpected post-ESC char while reading string: ' + text.charAt(i) + ' (Buffer=' + this._StringBuffer + ')');
                     }
-                    Buffer = '';
+                    this._StringBuffer = '';
                     this._AnsiParserState = AnsiParserState.None;
                 }
                 else {
@@ -1893,6 +1899,7 @@ var Ansi = (function () {
     Ansi.prototype.WriteLn = function (text) {
         this.Write(text + '\r\n');
     };
+    Ansi.MAX_STRING_LENGTH = 4194304;
     return Ansi;
 }());
 var AnsiParserState;
@@ -7438,6 +7445,8 @@ var fTelnetClient = (function () {
         var _this = this;
         this.ondata = new TypedEvent();
         this._HasFocus = true;
+        this._DataContinuationChannel = null;
+        this._DataContinuationPending = false;
         this._LastTimer = 0;
         this._LoadingProxySettings = 0;
         this._UseModernScrollback = false;
@@ -8270,12 +8279,26 @@ var fTelnetClient = (function () {
         this._LastTimer = new Date().getTime();
     };
     fTelnetClient.prototype.ScheduleDataContinuation = function () {
+        if (this._DataContinuationPending) {
+            return;
+        }
+        this._DataContinuationPending = true;
         var that = this;
-        if (typeof queueMicrotask === 'function') {
-            queueMicrotask(function () { that.OnConnectionData(); });
+        if (typeof MessageChannel === 'function') {
+            if (this._DataContinuationChannel === null) {
+                this._DataContinuationChannel = new MessageChannel();
+                this._DataContinuationChannel.port1.onmessage = function () {
+                    that._DataContinuationPending = false;
+                    that.OnConnectionData();
+                };
+            }
+            this._DataContinuationChannel.port2.postMessage(0);
         }
         else {
-            this._DataTimer = setTimeout(function () { that.OnConnectionData(); }, 0);
+            this._DataTimer = setTimeout(function () {
+                that._DataContinuationPending = false;
+                that.OnConnectionData();
+            }, 0);
         }
     };
     fTelnetClient.prototype.FastForward = function () {
@@ -8528,7 +8551,7 @@ var fTelnetClient = (function () {
     });
     fTelnetClient.CTERM_REVISION = '1;189';
     fTelnetClient.MAX_DRAIN_CHUNK_BYTES = 65536;
-    fTelnetClient.MAX_DRAIN_BYTES_PER_TURN = 1048576;
+    fTelnetClient.MAX_DRAIN_BYTES_PER_TURN = 65536;
     return fTelnetClient;
 }());
 var fTelnetOptions = (function () {

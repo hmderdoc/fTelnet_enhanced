@@ -18,6 +18,11 @@
   along with fTelnet.  If not, see <http://www.gnu.org/licenses/>.
 */
 class Ansi {
+    // Ceiling on a single control string, so a stream that never sends a
+    // terminator cannot grow this without bound. Comfortably larger than
+    // a full-screen sixel image.
+    private static MAX_STRING_LENGTH: number = 4194304;
+
     // Events
     public onDECRQCRA: IEvent = new TypedEvent();
     public onesc0c: IEvent = new TypedEvent();
@@ -44,6 +49,12 @@ class Ansi {
     private _AnsiParserState: AnsiParserState = AnsiParserState.None;
     private _AnsiXY: Point = new Point(1, 1);
     private _Crt: Crt;
+    // Device/operating-system/application command strings accumulate here
+    // rather than in Write()'s local Buffer. Write() flushes that local to
+    // the screen on every call, so a string spanning more than one network
+    // read would be printed as literal text and lost. Sixel images are
+    // always larger than one read.
+    private _StringBuffer: string = '';
     private _NormalizeSgr: boolean = true;
     private _SgrFragment: string = '';
 
@@ -1346,6 +1357,7 @@ class Ansi {
                         Buffer = '';
 
                         // Reset the parser state
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     } else if (text.charAt(i) === '^') {
                         // ESC ^ Privacy Message (PM) https://gitlab.synchro.net/main/sbbs/-/blob/master/src/conio/cterm.adoc#user-content-esc-privacy-message-pm
@@ -1353,6 +1365,7 @@ class Ansi {
                         Buffer = '';
 
                         // Reset the parser state
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     } else if (text.charAt(i) === '_') {
                         // ESC _ Application Program Command (APC) https://gitlab.synchro.net/main/sbbs/-/blob/master/src/conio/cterm.adoc#user-content-esc-_-application-program-command-apc
@@ -1360,6 +1373,7 @@ class Ansi {
                         Buffer = '';
 
                         // Reset the parser state
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     } else if (text.charAt(i) === 'c') {
                         // ESC c Reset to Initial State (RIS) https://gitlab.synchro.net/main/sbbs/-/blob/master/src/conio/cterm.adoc#user-content-esc-c-reset-to-initial-state-ris
@@ -1409,6 +1423,7 @@ class Ansi {
                         Buffer = '';
 
                         // Reset the parser state
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     } else if (text.charAt(i) === 'X') {
                         // ESC X Start Of String (SOS) https://gitlab.synchro.net/main/sbbs/-/blob/master/src/conio/cterm.adoc#user-content-esc-x-start-of-string-sos
@@ -1416,6 +1431,7 @@ class Ansi {
                         Buffer = '';
 
                         // Reset the parser state
+                        this._StringBuffer = '';
                         this._AnsiParserState = AnsiParserState.ReadingString;
                     } else {
                         Buffer += text.charAt(i);
@@ -1534,22 +1550,22 @@ class Ansi {
                 } else if (this._AnsiParserState === AnsiParserState.ReadingString) {
                     if (text.charAt(i) === '\x1B') {
                         this._AnsiParserState = AnsiParserState.ReadingStringEscape;
-                    } else {
-                        Buffer += text.charAt(i);
+                    } else if (this._StringBuffer.length < Ansi.MAX_STRING_LENGTH) {
+                        this._StringBuffer += text.charAt(i);
                     }
                 } else if (this._AnsiParserState === AnsiParserState.ReadingStringEscape) {
                     if (text.charAt(i) === '\\') {
                         // A DCS carrying sixel data is the one string type we
                         // render rather than discard.
-                        if (Sixel.IsSixel(Buffer)) {
-                            this._Crt.DrawSixel(Sixel.Decode(Buffer));
+                        if (Sixel.IsSixel(this._StringBuffer)) {
+                            this._Crt.DrawSixel(Sixel.Decode(this._StringBuffer));
                         } else {
-                            console.log('Ansi.ts read string: ' + Buffer);
+                            console.log('Ansi.ts read string: ' + this._StringBuffer);
                         }
                     } else {
-                        console.log('Ansi.ts unexpected post-ESC char while reading string: ' + text.charAt(i) + ' (Buffer=' + Buffer + ')');
+                        console.log('Ansi.ts unexpected post-ESC char while reading string: ' + text.charAt(i) + ' (Buffer=' + this._StringBuffer + ')');
                     }
-                    Buffer = '';
+                    this._StringBuffer = '';
                     this._AnsiParserState = AnsiParserState.None;
                 } else {
                     Buffer += text.charAt(i);

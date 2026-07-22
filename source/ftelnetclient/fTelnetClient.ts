@@ -47,8 +47,10 @@ class fTelnetClient {
     private static CTERM_REVISION: string = '1;189';
 
     private static MAX_DRAIN_CHUNK_BYTES: number = 65536;
-    private static MAX_DRAIN_BYTES_PER_TURN: number = 1048576;
+    private static MAX_DRAIN_BYTES_PER_TURN: number = 65536;
 
+    private _DataContinuationChannel: MessageChannel | null = null;
+    private _DataContinuationPending: boolean = false;
     private _LastTimer: number = 0;
     private _LoadingProxySettings: number = 0;
     private _MenuButton: HTMLAnchorElement;
@@ -1026,15 +1028,38 @@ class fTelnetClient {
     }
 
     /// <summary>
-    /// Schedules the next pass of OnConnectionData, preferring a microtask
-    /// so browser timeout clamping cannot throttle rendering.
+    /// Schedules the next pass of OnConnectionData.
     /// </summary>
+    /// <remarks>
+    /// This deliberately yields to the event loop between batches. A
+    /// microtask would not: microtasks run to completion before the browser
+    /// paints or delivers input, so chaining them to drain a large backlog
+    /// freezes the screen and swallows keystrokes until it finishes.
+    ///
+    /// MessageChannel is a task rather than a microtask, so the browser gets
+    /// its turn, but unlike setTimeout it is not subject to the 4ms clamp
+    /// that made rendering crawl in the first place.
+    /// </remarks>
     private ScheduleDataContinuation(): void {
+        if (this._DataContinuationPending) { return; }
+        this._DataContinuationPending = true;
+
         var that = this;
-        if (typeof queueMicrotask === 'function') {
-            queueMicrotask((): void => { that.OnConnectionData(); });
+
+        if (typeof MessageChannel === 'function') {
+            if (this._DataContinuationChannel === null) {
+                this._DataContinuationChannel = new MessageChannel();
+                this._DataContinuationChannel.port1.onmessage = function (): void {
+                    that._DataContinuationPending = false;
+                    that.OnConnectionData();
+                };
+            }
+            this._DataContinuationChannel.port2.postMessage(0);
         } else {
-            this._DataTimer = setTimeout((): void => { that.OnConnectionData(); }, 0);
+            this._DataTimer = setTimeout((): void => {
+                that._DataContinuationPending = false;
+                that.OnConnectionData();
+            }, 0);
         }
     }
 
