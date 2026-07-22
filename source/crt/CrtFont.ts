@@ -327,6 +327,14 @@ class CrtFont {
         }
     }
 
+    /// <summary>
+    /// Number of font images still loading. Glyph lookups return undefined
+    /// while this is above zero.
+    /// </summary>
+    public get Loading(): number {
+        return this._Loading;
+    }
+
     public get Name(): string {
         return this._Name;
     }

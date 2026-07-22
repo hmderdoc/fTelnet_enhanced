@@ -109,6 +109,8 @@ class Crt {
     private _SkipRedrawWhenSameFontSize: boolean = false;
     private _TempCanvas: HTMLCanvasElement;
     private _TempCanvasContext: CanvasRenderingContext2D;
+    // Real canvases parked here while BeginOffscreenRender() is in effect.
+    private _OffscreenSaved: { CanvasContext: CanvasRenderingContext2D, TempCanvas: HTMLCanvasElement, TempCanvasContext: CanvasRenderingContext2D } | null = null;
     private _Transparent: Boolean = false;
     private _UseModernScrollback: Boolean = false;
     private _WindMin: number = 0;
@@ -555,6 +557,10 @@ class Crt {
         ///   (default is true)< / param>
         if (typeof updateBuffer === 'undefined') { updateBuffer = true; }
 
+        // Solid block glyphs in 24-bit colour are drawn as plain rectangles
+        // rather than through the glyph cache. See FastWriteBlocks().
+        if (this.FastWriteBlocks(text, x, y, charInfo, updateBuffer)) { return; }
+
         if ((x <= this._ScreenSize.x) && (y <= this._ScreenSize.y)) {
             var Chars: string[] = [];
             var CharCodes: number[] = [];
@@ -595,6 +601,92 @@ class Crt {
                 if (x + i >= this._ScreenSize.x) { break; }
             }
         }
+    }
+
+    /// <summary>
+    /// Draws a run of solid block glyphs as filled rectangles, bypassing the
+    /// glyph cache. Returns false if the run is not eligible, in which case
+    /// the caller falls back to the normal path.
+    /// </summary>
+    /// <remarks>
+    /// The normal path colours a glyph by baking a canvas per attribute
+    /// combination and caching it. With a 16-colour palette that is a good
+    /// trade. With 24-bit colour it is a bad one: block-drawing art tends to
+    /// use a different colour in almost every cell, so nearly every write
+    /// misses cache and bakes a fresh canvas.
+    ///
+    /// The four glyphs handled here - space, full block, lower half, upper
+    /// half - are the bulk of gradient and image-converted ANSI, and each is
+    /// one or two fillRect calls. Anything with blink, underline or reverse
+    /// is left to the normal path, as is anything still in the 16-colour
+    /// range where the cache works well.
+    /// </remarks>
+    private FastWriteBlocks(text: string, x: number, y: number, charInfo: CharInfo, updateBuffer: boolean): boolean {
+        if (typeof text === 'undefined' || text === null) { return false; }
+        if (charInfo === null || typeof charInfo === 'undefined') { return false; }
+        if (charInfo.Reverse || charInfo.Blink || charInfo.Underline) { return false; }
+        if (charInfo.Fore24 <= 0x0F && charInfo.Back24 <= 0x0F) { return false; }
+        if (x > this._ScreenSize.x || y > this._ScreenSize.y) { return false; }
+        if (!this._CanvasContext || !this._Font) { return false; }
+
+        var FontWidth: number = this._Font.Width;
+        var FontHeight: number = this._Font.Height;
+        if (!FontWidth || !FontHeight) { return false; }
+
+        // In legacy scrollback, a buffered write while scrolled back is not
+        // painted at all; report handled so the caller does not paint either.
+        if (!this._UseModernScrollback && this._InScrollback && updateBuffer) { return true; }
+
+        var Text: string = String(text);
+        var MaxLength: number = Math.min(Text.length, this._ScreenSize.x - x + 1);
+
+        // Everything in the run must be eligible, otherwise fall back whole
+        // rather than painting part of it twice.
+        for (var i: number = 0; i < MaxLength; i++) {
+            var Code: number = Text.charCodeAt(i);
+            if (Code !== 32 && Code !== 0 && Code !== 219 && Code !== 220 && Code !== 223) {
+                return false;
+            }
+        }
+
+        var Fore: number = charInfo.Fore24 & 0xFFFFFF;
+        var Back: number = charInfo.Back24 & 0xFFFFFF;
+
+        for (var i: number = 0; i < MaxLength; i++) {
+            var Code: number = Text.charCodeAt(i);
+            var PixelX: number = (x - 1 + i) * FontWidth;
+            var PixelY: number = this._UseModernScrollback
+                ? (y - 1 + this._ScrollbackSize) * FontHeight
+                : (y - 1) * FontHeight;
+
+            if (Code === 219) {
+                this.FillCellRect(PixelX, PixelY, FontWidth, FontHeight, Fore);
+            } else if (Code === 220) {
+                // Lower half block: background on top, foreground below.
+                this.FillCellRect(PixelX, PixelY, FontWidth, Math.floor(FontHeight / 2), Back);
+                this.FillCellRect(PixelX, PixelY + Math.floor(FontHeight / 2), FontWidth, Math.ceil(FontHeight / 2), Fore);
+            } else if (Code === 223) {
+                // Upper half block: foreground on top, background below.
+                this.FillCellRect(PixelX, PixelY, FontWidth, Math.ceil(FontHeight / 2), Fore);
+                this.FillCellRect(PixelX, PixelY + Math.ceil(FontHeight / 2), FontWidth, Math.floor(FontHeight / 2), Back);
+            } else {
+                this.FillCellRect(PixelX, PixelY, FontWidth, FontHeight, Back);
+            }
+
+            if (updateBuffer && this._Buffer[y] && this._Buffer[y][x + i]) {
+                var Cell: CharInfo = this._Buffer[y][x + i];
+                Cell.Set(charInfo);
+                Cell.Ch = Text.charAt(i);
+                Cell.NeedsRedraw = false;
+            }
+        }
+
+        return true;
+    }
+
+    private FillCellRect(x: number, y: number, width: number, height: number, colour: number): void {
+        this._CanvasContext.fillStyle = '#' + ('000000' + (colour & 0xFFFFFF).toString(16)).slice(-6);
+        this._CanvasContext.fillRect(x, y, width, height);
     }
 
     public FillScreen(ch: string): void {
@@ -1428,6 +1520,99 @@ class Crt {
             osc.start(startTime);
             osc.stop(endTime);
         }
+    }
+
+    /// <summary>
+    /// Redirects drawing to throwaway canvases until EndOffscreenRender().
+    /// Returns false if the swap could not be made, in which case the
+    /// caller must not call EndOffscreenRender().
+    /// </summary>
+    /// <remarks>
+    /// Used to replay a backlog cheaply: the cell buffer is still updated,
+    /// but the draw calls land on a surface nobody looks at.
+    /// </remarks>
+    public BeginOffscreenRender(width: number, height: number): boolean {
+        if (this._OffscreenSaved !== null) { return false; }
+
+        var dummyCanvas: HTMLCanvasElement = document.createElement('canvas');
+        dummyCanvas.width = width;
+        dummyCanvas.height = height;
+        var dummyContext = dummyCanvas.getContext('2d');
+
+        var dummyTemp: HTMLCanvasElement = document.createElement('canvas');
+        dummyTemp.width = width;
+        dummyTemp.height = height;
+        var dummyTempContext = dummyTemp.getContext('2d');
+
+        if (dummyContext === null || dummyTempContext === null) { return false; }
+
+        this._OffscreenSaved = {
+            CanvasContext: this._CanvasContext,
+            TempCanvas: this._TempCanvas,
+            TempCanvasContext: this._TempCanvasContext
+        };
+
+        this._CanvasContext = dummyContext;
+        this._TempCanvas = dummyTemp;
+        this._TempCanvasContext = dummyTempContext;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Restores the real canvases after BeginOffscreenRender().
+    /// </summary>
+    public EndOffscreenRender(): void {
+        if (this._OffscreenSaved === null) { return; }
+
+        this._CanvasContext = this._OffscreenSaved.CanvasContext;
+        this._TempCanvas = this._OffscreenSaved.TempCanvas;
+        this._TempCanvasContext = this._OffscreenSaved.TempCanvasContext;
+        this._OffscreenSaved = null;
+    }
+
+    /// <summary>
+    /// Flags every cell as needing a repaint, so the next FlushNeedsRedraw()
+    /// paints the whole screen.
+    /// </summary>
+    public InvalidateAll(): void {
+        if (!this._Buffer || !this._ScreenSize) { return; }
+
+        for (var Y: number = 1; Y <= this._ScreenSize.y; Y++) {
+            if (!this._Buffer[Y]) { continue; }
+            for (var X: number = 1; X <= this._ScreenSize.x; X++) {
+                if (this._Buffer[Y][X]) { this._Buffer[Y][X].NeedsRedraw = true; }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Repaints any cells flagged NeedsRedraw and clears the flag.
+    /// Returns the number of cells repainted.
+    /// </summary>
+    /// <remarks>
+    /// A cell written while its font PNG was still loading cannot be drawn
+    /// at the time, and is flagged instead. Without a sweep once loading
+    /// finishes those cells stay blank until something else happens to
+    /// overwrite them, which on a static screen may be never.
+    /// </remarks>
+    public FlushNeedsRedraw(): number {
+        if (!this._Buffer || !this._ScreenSize) { return 0; }
+        if (this._Font && this._Font.Loading > 0) { return 0; }
+
+        var flushed: number = 0;
+        for (var Y: number = 1; Y <= this._ScreenSize.y; Y++) {
+            if (!this._Buffer[Y]) { continue; }
+            for (var X: number = 1; X <= this._ScreenSize.x; X++) {
+                if (this._Buffer[Y][X] && this._Buffer[Y][X].NeedsRedraw) {
+                    this.FastWrite(this._Buffer[Y][X].Ch, X, Y, this._Buffer[Y][X], false);
+                    this._Buffer[Y][X].NeedsRedraw = false;
+                    flushed++;
+                }
+            }
+        }
+
+        return flushed;
     }
 
     public get BellEnabled(): boolean {

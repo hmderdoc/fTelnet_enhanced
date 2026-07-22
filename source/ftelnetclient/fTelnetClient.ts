@@ -32,6 +32,16 @@ class fTelnetClient {
     private _fTelnetContainer: HTMLElement;
     private _HasFocus: boolean = true;
     private _InitMessageBar: HTMLDivElement;
+    /// <summary>
+    /// Read sizing for the unthrottled path (Options.BitsPerSecond === 0).
+    /// </summary>
+    /// <remarks>
+    /// MAX_DRAIN_BYTES_PER_TURN caps how much is processed before yielding,
+    /// so a large backlog cannot block the UI thread indefinitely.
+    /// </remarks>
+    private static MAX_DRAIN_CHUNK_BYTES: number = 65536;
+    private static MAX_DRAIN_BYTES_PER_TURN: number = 1048576;
+
     private _LastTimer: number = 0;
     private _LoadingProxySettings: number = 0;
     private _MenuButton: HTMLAnchorElement;
@@ -889,38 +899,159 @@ class fTelnetClient {
         // TODO If telnet, old fTelnet used to send will sga, wont linemode, and will/wont echo based on localecho
     }
 
+    /// <summary>
+    /// Feeds one chunk of received data to the emulation.
+    /// </summary>
+    private ProcessData(Data: string): void {
+        if (Data.length === 0) { return; }
+
+        this.ondata.trigger(Data);
+        if (this._Options.Emulation === 'RIP') {
+            this._RIP.Parse(Data);
+        } else {
+            this._Ansi.Write(Data);
+        }
+    }
+
     private OnConnectionData(): void {
         // If the timer is disabled then we're transferring data and don't want to process it here
         if (typeof this._Timer !== 'undefined') {
             if (typeof this._Connection !== 'undefined') {
-                // Determine how long it took between frames
-                var MSecElapsed: number = new Date().getTime() - this._LastTimer;
-                if (MSecElapsed < 1) { MSecElapsed = 1; }
+                if (this._Options.BitsPerSecond > 0) {
+                    // Throttled: pace reads to emulate a modem at the
+                    // requested speed.
+                    //
+                    // Determine how long it took between frames
+                    var MSecElapsed: number = new Date().getTime() - this._LastTimer;
+                    if (MSecElapsed < 1) { MSecElapsed = 1; }
 
-                // Determine how many bytes we need to read to achieve the requested BitsPerSecond rate
-                var BytesToRead: number = Math.floor(this._Options.BitsPerSecond / 8 / (1000 / MSecElapsed));
-                if (BytesToRead < 1) { BytesToRead = 1; }
+                    // Determine how many bytes we need to read to achieve the requested BitsPerSecond rate
+                    var BytesToRead: number = Math.floor(this._Options.BitsPerSecond / 8 / (1000 / MSecElapsed));
+                    if (BytesToRead < 1) { BytesToRead = 1; }
 
-                // Read the number of bytes we want
-                var Data: string = this._Connection.readString(BytesToRead);
-                if (Data.length > 0) {
-                    this.ondata.trigger(Data);
-                    if (this._Options.Emulation === 'RIP') {
-                        this._RIP.Parse(Data);
-                    } else {
-                        this._Ansi.Write(Data);
+                    // Read the number of bytes we want
+                    this.ProcessData(this._Connection.readString(BytesToRead));
+
+                    // If we have data leftover, schedule a new timer
+                    if (this._Connection.bytesAvailable > 0) {
+                        // Restart timer to handle the end of the screen
+                        clearTimeout(this._DataTimer);
+                        // queueMicrotask rather than setTimeout(0): browsers
+                        // clamp chained timeouts to 4ms or more, and far more
+                        // in a background tab or a deprioritised iframe. At
+                        // 4ms a screenful of ANSI takes seconds to paint and
+                        // visibly crawls. Microtasks are not clamped.
+                        this.ScheduleDataContinuation();
                     }
-                }
+                } else {
+                    // Unthrottled: drain everything that has arrived, in
+                    // bounded chunks so a large backlog cannot lock the UI
+                    // thread for an unbounded stretch.
+                    var Available: number = this._Connection.bytesAvailable;
+                    var Drained: number = 0;
 
-                // If we have data leftover, schedule a new timer
-                if (this._Connection.bytesAvailable > 0) {
-                    // Restart timer to handle the end of the screen
-                    clearTimeout(this._DataTimer);
-                    this._DataTimer = setTimeout((): void => { this.OnConnectionData(); }, 0);
+                    while (Available > 0 && Drained < fTelnetClient.MAX_DRAIN_BYTES_PER_TURN) {
+                        var Chunk: string = this._Connection.readString(
+                            Math.min(Available, fTelnetClient.MAX_DRAIN_CHUNK_BYTES));
+                        if (Chunk.length === 0) { break; }
+
+                        Drained += Chunk.length;
+                        this.ProcessData(Chunk);
+                        Available = this._Connection.bytesAvailable;
+                    }
+
+                    if (Available > 0) {
+                        clearTimeout(this._DataTimer);
+                        this.ScheduleDataContinuation();
+                    } else if (Drained > 0) {
+                        // A cell whose font was still loading when it was
+                        // written could not be painted at the time. Now that
+                        // the batch is done, sweep those up.
+                        this._Crt.FlushNeedsRedraw();
+                    }
                 }
             }
         }
         this._LastTimer = new Date().getTime();
+    }
+
+    /// <summary>
+    /// Schedules the next pass of OnConnectionData, preferring a microtask
+    /// so browser timeout clamping cannot throttle rendering.
+    /// </summary>
+    private ScheduleDataContinuation(): void {
+        var that = this;
+        if (typeof queueMicrotask === 'function') {
+            queueMicrotask((): void => { that.OnConnectionData(); });
+        } else {
+            this._DataTimer = setTimeout((): void => { that.OnConnectionData(); }, 0);
+        }
+    }
+
+    /// <summary>
+    /// Catches up on a backlog without painting each intermediate frame.
+    /// Returns the number of bytes processed.
+    /// </summary>
+    /// <remarks>
+    /// Replaying a large backlog normally means every scroll, clear and
+    /// glyph draw hits the real canvas, so catching up on a hidden terminal
+    /// costs as much as having watched it. Here the canvas contexts are
+    /// swapped for throwaway ones first, so the parser still updates the
+    /// cell buffer and all the drawing lands somewhere harmless. The real
+    /// contexts are then restored and the final state is painted once.
+    ///
+    /// Pair with a host that stops pumping while its terminal is hidden.
+    /// </remarks>
+    public FastForward(): number {
+        if (typeof this._Connection === 'undefined') { return 0; }
+
+        var Available: number = this._Connection.bytesAvailable;
+        if (Available === 0) {
+            this._Crt.FlushNeedsRedraw();
+            return 0;
+        }
+
+        var Width: number = this._Crt.Canvas ? this._Crt.Canvas.width : 800;
+        var Height: number = this._Crt.Canvas ? this._Crt.Canvas.height : 600;
+
+        var Swapped: boolean = this._Crt.BeginOffscreenRender(Width, Height);
+        try {
+            // Drain in a loop: OnConnectionData yields once it hits its
+            // per-turn cap, and we want the whole backlog consumed here.
+            while (this._Connection.bytesAvailable > 0) {
+                var Before: number = this._Connection.bytesAvailable;
+                this.OnConnectionData();
+                if (this._Connection.bytesAvailable >= Before) { break; }
+            }
+        } finally {
+            if (Swapped) { this._Crt.EndOffscreenRender(); }
+        }
+
+        this._Crt.InvalidateAll();
+        this._Crt.FlushNeedsRedraw();
+
+        return Available - this._Connection.bytesAvailable;
+    }
+
+    /// <summary>
+    /// Processes any received data that has not been drained yet.
+    /// </summary>
+    /// <remarks>
+    /// A host that hides the terminal (a single-page app switching panels,
+    /// say) can stop pumping, let data pile up in the receive buffer, and
+    /// call this on the way back in. Also useful as a safety net where an
+    /// ondata event can be missed, such as a heavily throttled iframe.
+    /// Returns the number of bytes processed.
+    /// </remarks>
+    public Poll(): number {
+        if (typeof this._Connection === 'undefined') { return 0; }
+        if (!this._Connection.connected) { return 0; }
+
+        var Available: number = this._Connection.bytesAvailable;
+        if (Available === 0) { return 0; }
+
+        this.OnConnectionData();
+        return Available - this._Connection.bytesAvailable;
     }
 
     private OnConnectionLocalEcho(value: boolean): void {

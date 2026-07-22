@@ -1964,6 +1964,7 @@ var Crt = (function () {
         this._ScrollbackPosition = -1;
         this._ScrollbackSize = 250;
         this._SkipRedrawWhenSameFontSize = false;
+        this._OffscreenSaved = null;
         this._Transparent = false;
         this._UseModernScrollback = false;
         this._WindMin = 0;
@@ -2245,6 +2246,9 @@ var Crt = (function () {
         if (typeof updateBuffer === 'undefined') {
             updateBuffer = true;
         }
+        if (this.FastWriteBlocks(text, x, y, charInfo, updateBuffer)) {
+            return;
+        }
         if ((x <= this._ScreenSize.x) && (y <= this._ScreenSize.y)) {
             var Chars = [];
             var CharCodes = [];
@@ -2286,6 +2290,76 @@ var Crt = (function () {
                 }
             }
         }
+    };
+    Crt.prototype.FastWriteBlocks = function (text, x, y, charInfo, updateBuffer) {
+        if (typeof text === 'undefined' || text === null) {
+            return false;
+        }
+        if (charInfo === null || typeof charInfo === 'undefined') {
+            return false;
+        }
+        if (charInfo.Reverse || charInfo.Blink || charInfo.Underline) {
+            return false;
+        }
+        if (charInfo.Fore24 <= 0x0F && charInfo.Back24 <= 0x0F) {
+            return false;
+        }
+        if (x > this._ScreenSize.x || y > this._ScreenSize.y) {
+            return false;
+        }
+        if (!this._CanvasContext || !this._Font) {
+            return false;
+        }
+        var FontWidth = this._Font.Width;
+        var FontHeight = this._Font.Height;
+        if (!FontWidth || !FontHeight) {
+            return false;
+        }
+        if (!this._UseModernScrollback && this._InScrollback && updateBuffer) {
+            return true;
+        }
+        var Text = String(text);
+        var MaxLength = Math.min(Text.length, this._ScreenSize.x - x + 1);
+        for (var i = 0; i < MaxLength; i++) {
+            var Code = Text.charCodeAt(i);
+            if (Code !== 32 && Code !== 0 && Code !== 219 && Code !== 220 && Code !== 223) {
+                return false;
+            }
+        }
+        var Fore = charInfo.Fore24 & 0xFFFFFF;
+        var Back = charInfo.Back24 & 0xFFFFFF;
+        for (var i = 0; i < MaxLength; i++) {
+            var Code = Text.charCodeAt(i);
+            var PixelX = (x - 1 + i) * FontWidth;
+            var PixelY = this._UseModernScrollback
+                ? (y - 1 + this._ScrollbackSize) * FontHeight
+                : (y - 1) * FontHeight;
+            if (Code === 219) {
+                this.FillCellRect(PixelX, PixelY, FontWidth, FontHeight, Fore);
+            }
+            else if (Code === 220) {
+                this.FillCellRect(PixelX, PixelY, FontWidth, Math.floor(FontHeight / 2), Back);
+                this.FillCellRect(PixelX, PixelY + Math.floor(FontHeight / 2), FontWidth, Math.ceil(FontHeight / 2), Fore);
+            }
+            else if (Code === 223) {
+                this.FillCellRect(PixelX, PixelY, FontWidth, Math.ceil(FontHeight / 2), Fore);
+                this.FillCellRect(PixelX, PixelY + Math.ceil(FontHeight / 2), FontWidth, Math.floor(FontHeight / 2), Back);
+            }
+            else {
+                this.FillCellRect(PixelX, PixelY, FontWidth, FontHeight, Back);
+            }
+            if (updateBuffer && this._Buffer[y] && this._Buffer[y][x + i]) {
+                var Cell = this._Buffer[y][x + i];
+                Cell.Set(charInfo);
+                Cell.Ch = Text.charAt(i);
+                Cell.NeedsRedraw = false;
+            }
+        }
+        return true;
+    };
+    Crt.prototype.FillCellRect = function (x, y, width, height, colour) {
+        this._CanvasContext.fillStyle = '#' + ('000000' + (colour & 0xFFFFFF).toString(16)).slice(-6);
+        this._CanvasContext.fillRect(x, y, width, height);
     };
     Crt.prototype.FillScreen = function (ch) {
         var Line = StringUtils.NewString(ch.charAt(0), this.ScreenCols);
@@ -3054,6 +3128,77 @@ var Crt = (function () {
             osc.start(startTime);
             osc.stop(endTime);
         }
+    };
+    Crt.prototype.BeginOffscreenRender = function (width, height) {
+        if (this._OffscreenSaved !== null) {
+            return false;
+        }
+        var dummyCanvas = document.createElement('canvas');
+        dummyCanvas.width = width;
+        dummyCanvas.height = height;
+        var dummyContext = dummyCanvas.getContext('2d');
+        var dummyTemp = document.createElement('canvas');
+        dummyTemp.width = width;
+        dummyTemp.height = height;
+        var dummyTempContext = dummyTemp.getContext('2d');
+        if (dummyContext === null || dummyTempContext === null) {
+            return false;
+        }
+        this._OffscreenSaved = {
+            CanvasContext: this._CanvasContext,
+            TempCanvas: this._TempCanvas,
+            TempCanvasContext: this._TempCanvasContext
+        };
+        this._CanvasContext = dummyContext;
+        this._TempCanvas = dummyTemp;
+        this._TempCanvasContext = dummyTempContext;
+        return true;
+    };
+    Crt.prototype.EndOffscreenRender = function () {
+        if (this._OffscreenSaved === null) {
+            return;
+        }
+        this._CanvasContext = this._OffscreenSaved.CanvasContext;
+        this._TempCanvas = this._OffscreenSaved.TempCanvas;
+        this._TempCanvasContext = this._OffscreenSaved.TempCanvasContext;
+        this._OffscreenSaved = null;
+    };
+    Crt.prototype.InvalidateAll = function () {
+        if (!this._Buffer || !this._ScreenSize) {
+            return;
+        }
+        for (var Y = 1; Y <= this._ScreenSize.y; Y++) {
+            if (!this._Buffer[Y]) {
+                continue;
+            }
+            for (var X = 1; X <= this._ScreenSize.x; X++) {
+                if (this._Buffer[Y][X]) {
+                    this._Buffer[Y][X].NeedsRedraw = true;
+                }
+            }
+        }
+    };
+    Crt.prototype.FlushNeedsRedraw = function () {
+        if (!this._Buffer || !this._ScreenSize) {
+            return 0;
+        }
+        if (this._Font && this._Font.Loading > 0) {
+            return 0;
+        }
+        var flushed = 0;
+        for (var Y = 1; Y <= this._ScreenSize.y; Y++) {
+            if (!this._Buffer[Y]) {
+                continue;
+            }
+            for (var X = 1; X <= this._ScreenSize.x; X++) {
+                if (this._Buffer[Y][X] && this._Buffer[Y][X].NeedsRedraw) {
+                    this.FastWrite(this._Buffer[Y][X].Ch, X, Y, this._Buffer[Y][X], false);
+                    this._Buffer[Y][X].NeedsRedraw = false;
+                    flushed++;
+                }
+            }
+        }
+        return flushed;
     };
     Object.defineProperty(Crt.prototype, "BellEnabled", {
         get: function () {
@@ -4170,6 +4315,13 @@ var CrtFont = (function () {
             return true;
         }
     };
+    Object.defineProperty(CrtFont.prototype, "Loading", {
+        get: function () {
+            return this._Loading;
+        },
+        enumerable: true,
+        configurable: true
+    });
     Object.defineProperty(CrtFont.prototype, "Name", {
         get: function () {
             return this._Name;
@@ -7723,35 +7875,112 @@ var fTelnetClient = (function () {
             this.FullScreenToggle(true);
         }
     };
+    fTelnetClient.prototype.ProcessData = function (Data) {
+        if (Data.length === 0) {
+            return;
+        }
+        this.ondata.trigger(Data);
+        if (this._Options.Emulation === 'RIP') {
+            this._RIP.Parse(Data);
+        }
+        else {
+            this._Ansi.Write(Data);
+        }
+    };
     fTelnetClient.prototype.OnConnectionData = function () {
-        var _this = this;
         if (typeof this._Timer !== 'undefined') {
             if (typeof this._Connection !== 'undefined') {
-                var MSecElapsed = new Date().getTime() - this._LastTimer;
-                if (MSecElapsed < 1) {
-                    MSecElapsed = 1;
-                }
-                var BytesToRead = Math.floor(this._Options.BitsPerSecond / 8 / (1000 / MSecElapsed));
-                if (BytesToRead < 1) {
-                    BytesToRead = 1;
-                }
-                var Data = this._Connection.readString(BytesToRead);
-                if (Data.length > 0) {
-                    this.ondata.trigger(Data);
-                    if (this._Options.Emulation === 'RIP') {
-                        this._RIP.Parse(Data);
+                if (this._Options.BitsPerSecond > 0) {
+                    var MSecElapsed = new Date().getTime() - this._LastTimer;
+                    if (MSecElapsed < 1) {
+                        MSecElapsed = 1;
                     }
-                    else {
-                        this._Ansi.Write(Data);
+                    var BytesToRead = Math.floor(this._Options.BitsPerSecond / 8 / (1000 / MSecElapsed));
+                    if (BytesToRead < 1) {
+                        BytesToRead = 1;
+                    }
+                    this.ProcessData(this._Connection.readString(BytesToRead));
+                    if (this._Connection.bytesAvailable > 0) {
+                        clearTimeout(this._DataTimer);
+                        this.ScheduleDataContinuation();
                     }
                 }
-                if (this._Connection.bytesAvailable > 0) {
-                    clearTimeout(this._DataTimer);
-                    this._DataTimer = setTimeout(function () { _this.OnConnectionData(); }, 0);
+                else {
+                    var Available = this._Connection.bytesAvailable;
+                    var Drained = 0;
+                    while (Available > 0 && Drained < fTelnetClient.MAX_DRAIN_BYTES_PER_TURN) {
+                        var Chunk = this._Connection.readString(Math.min(Available, fTelnetClient.MAX_DRAIN_CHUNK_BYTES));
+                        if (Chunk.length === 0) {
+                            break;
+                        }
+                        Drained += Chunk.length;
+                        this.ProcessData(Chunk);
+                        Available = this._Connection.bytesAvailable;
+                    }
+                    if (Available > 0) {
+                        clearTimeout(this._DataTimer);
+                        this.ScheduleDataContinuation();
+                    }
+                    else if (Drained > 0) {
+                        this._Crt.FlushNeedsRedraw();
+                    }
                 }
             }
         }
         this._LastTimer = new Date().getTime();
+    };
+    fTelnetClient.prototype.ScheduleDataContinuation = function () {
+        var that = this;
+        if (typeof queueMicrotask === 'function') {
+            queueMicrotask(function () { that.OnConnectionData(); });
+        }
+        else {
+            this._DataTimer = setTimeout(function () { that.OnConnectionData(); }, 0);
+        }
+    };
+    fTelnetClient.prototype.FastForward = function () {
+        if (typeof this._Connection === 'undefined') {
+            return 0;
+        }
+        var Available = this._Connection.bytesAvailable;
+        if (Available === 0) {
+            this._Crt.FlushNeedsRedraw();
+            return 0;
+        }
+        var Width = this._Crt.Canvas ? this._Crt.Canvas.width : 800;
+        var Height = this._Crt.Canvas ? this._Crt.Canvas.height : 600;
+        var Swapped = this._Crt.BeginOffscreenRender(Width, Height);
+        try {
+            while (this._Connection.bytesAvailable > 0) {
+                var Before = this._Connection.bytesAvailable;
+                this.OnConnectionData();
+                if (this._Connection.bytesAvailable >= Before) {
+                    break;
+                }
+            }
+        }
+        finally {
+            if (Swapped) {
+                this._Crt.EndOffscreenRender();
+            }
+        }
+        this._Crt.InvalidateAll();
+        this._Crt.FlushNeedsRedraw();
+        return Available - this._Connection.bytesAvailable;
+    };
+    fTelnetClient.prototype.Poll = function () {
+        if (typeof this._Connection === 'undefined') {
+            return 0;
+        }
+        if (!this._Connection.connected) {
+            return 0;
+        }
+        var Available = this._Connection.bytesAvailable;
+        if (Available === 0) {
+            return 0;
+        }
+        this.OnConnectionData();
+        return Available - this._Connection.bytesAvailable;
     };
     fTelnetClient.prototype.OnConnectionLocalEcho = function (value) {
         if (this._Options.NegotiateLocalEcho) {
@@ -7957,6 +8186,8 @@ var fTelnetClient = (function () {
         enumerable: true,
         configurable: true
     });
+    fTelnetClient.MAX_DRAIN_CHUNK_BYTES = 65536;
+    fTelnetClient.MAX_DRAIN_BYTES_PER_TURN = 1048576;
     return fTelnetClient;
 }());
 var fTelnetOptions = (function () {
