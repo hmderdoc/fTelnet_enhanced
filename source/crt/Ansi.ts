@@ -1531,7 +1531,13 @@ class Ansi {
                     }
                 } else if (this._AnsiParserState === AnsiParserState.ReadingStringEscape) {
                     if (text.charAt(i) === '\\') {
-                        console.log('Ansi.ts read string: ' + Buffer);
+                        // A DCS carrying sixel data is the one string type we
+                        // render rather than discard.
+                        if (Sixel.IsSixel(Buffer)) {
+                            this._Crt.DrawSixel(Sixel.Decode(Buffer));
+                        } else {
+                            console.log('Ansi.ts read string: ' + Buffer);
+                        }
                     } else {
                         console.log('Ansi.ts unexpected post-ESC char while reading string: ' + text.charAt(i) + ' (Buffer=' + Buffer + ')');
                     }

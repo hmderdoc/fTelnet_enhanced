@@ -1450,7 +1450,12 @@ var Ansi = (function () {
                 }
                 else if (this._AnsiParserState === AnsiParserState.ReadingStringEscape) {
                     if (text.charAt(i) === '\\') {
-                        console.log('Ansi.ts read string: ' + Buffer);
+                        if (Sixel.IsSixel(Buffer)) {
+                            this._Crt.DrawSixel(Sixel.Decode(Buffer));
+                        }
+                        else {
+                            console.log('Ansi.ts read string: ' + Buffer);
+                        }
                     }
                     else {
                         console.log('Ansi.ts unexpected post-ESC char while reading string: ' + text.charAt(i) + ' (Buffer=' + Buffer + ')');
@@ -2713,6 +2718,43 @@ var Crt = (function () {
             osc.start(startTime);
             osc.stop(endTime);
         }
+    };
+    Crt.prototype.DrawSixel = function (image) {
+        if (image === null || !this._CanvasContext || !this._Font) {
+            return;
+        }
+        var FontWidth = this._Font.Width;
+        var FontHeight = this._Font.Height;
+        if (!FontWidth || !FontHeight) {
+            return;
+        }
+        var PixelX = (this.WhereXA() - 1) * FontWidth;
+        var PixelY = this._UseModernScrollback
+            ? (this.WhereYA() - 1 + this._ScrollbackSize) * FontHeight
+            : (this.WhereYA() - 1) * FontHeight;
+        this._CanvasContext.drawImage(image, PixelX, PixelY);
+        var Columns = Math.ceil(image.width / FontWidth);
+        var Rows = Math.ceil(image.height / FontHeight);
+        var StartX = this.WhereXA();
+        var StartY = this.WhereYA();
+        for (var Y = StartY; Y < StartY + Rows && Y <= this._ScreenSize.y; Y++) {
+            if (!this._Buffer[Y]) {
+                continue;
+            }
+            for (var X = StartX; X < StartX + Columns && X <= this._ScreenSize.x; X++) {
+                if (!this._Buffer[Y][X]) {
+                    continue;
+                }
+                this._Buffer[Y][X].Ch = ' ';
+                this._Buffer[Y][X].NeedsRedraw = false;
+            }
+        }
+        var TargetY = this.WhereY() + Rows;
+        while ((TargetY + this.WindMinY) > this.WindMaxY) {
+            this.ScrollUpWindow(1);
+            TargetY--;
+        }
+        this.GotoXY(1, TargetY < 1 ? 1 : TargetY);
     };
     Crt.prototype.BeginOffscreenRender = function (width, height) {
         if (this._OffscreenSaved !== null) {
@@ -4168,6 +4210,265 @@ var KeyboardKeys;
     KeyboardKeys[KeyboardKeys["WINDOWS"] = 1003] = "WINDOWS";
     KeyboardKeys[KeyboardKeys["UP"] = 38] = "UP";
 })(KeyboardKeys || (KeyboardKeys = {}));
+var Sixel = (function () {
+    function Sixel() {
+    }
+    Sixel.IsSixel = function (payload) {
+        return /^[0-9;]*q/.test(payload);
+    };
+    Sixel.Decode = function (payload) {
+        if (!Sixel.IsSixel(payload)) {
+            return null;
+        }
+        var data = payload.substring(payload.indexOf('q') + 1);
+        var size = Sixel.Measure(data);
+        var width = size[0];
+        var height = size[1];
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        var context = canvas.getContext('2d');
+        if (context === null) {
+            return null;
+        }
+        var image = context.createImageData(width, height);
+        Sixel.Render(data, image, width, height);
+        context.putImageData(image, 0, 0);
+        return canvas;
+    };
+    Sixel.Measure = function (data) {
+        var x = 0;
+        var maxX = 0;
+        var band = 0;
+        var i = 0;
+        var length = data.length;
+        while (i < length) {
+            var ch = data.charAt(i);
+            if (ch === '"') {
+                var raster = Sixel.ReadParams(data, i + 1);
+                var params = raster.Params;
+                if (params.length >= 4 && params[2] > 0 && params[3] > 0) {
+                    return [
+                        Math.min(params[2], Sixel.MAX_WIDTH),
+                        Math.min(params[3], Sixel.MAX_HEIGHT)
+                    ];
+                }
+                i = raster.Index;
+                continue;
+            }
+            if (ch === '#') {
+                i = Sixel.ReadParams(data, i + 1).Index;
+                continue;
+            }
+            if (ch === '!') {
+                var repeat = Sixel.ReadParams(data, i + 1);
+                var count = repeat.Params.length > 0 ? repeat.Params[0] : 1;
+                i = repeat.Index;
+                if (i < length && Sixel.IsDataByte(data.charAt(i))) {
+                    x += count;
+                    if (x > maxX) {
+                        maxX = x;
+                    }
+                    i++;
+                }
+                continue;
+            }
+            if (ch === '$') {
+                x = 0;
+                i++;
+                continue;
+            }
+            if (ch === '-') {
+                x = 0;
+                band++;
+                i++;
+                continue;
+            }
+            if (Sixel.IsDataByte(ch)) {
+                x++;
+                if (x > maxX) {
+                    maxX = x;
+                }
+                i++;
+                continue;
+            }
+            i++;
+        }
+        return [
+            Math.min(maxX, Sixel.MAX_WIDTH),
+            Math.min((band + 1) * 6, Sixel.MAX_HEIGHT)
+        ];
+    };
+    Sixel.Render = function (data, image, width, height) {
+        var palette = [];
+        for (var p = 0; p < Sixel.DEFAULT_PALETTE.length; p++) {
+            palette[p] = [
+                Math.round(Sixel.DEFAULT_PALETTE[p][0] * 255 / 100),
+                Math.round(Sixel.DEFAULT_PALETTE[p][1] * 255 / 100),
+                Math.round(Sixel.DEFAULT_PALETTE[p][2] * 255 / 100)
+            ];
+        }
+        var colour = palette[0];
+        var x = 0;
+        var band = 0;
+        var i = 0;
+        var length = data.length;
+        while (i < length) {
+            var ch = data.charAt(i);
+            if (ch === '"') {
+                i = Sixel.ReadParams(data, i + 1).Index;
+                continue;
+            }
+            if (ch === '#') {
+                var colourSpec = Sixel.ReadParams(data, i + 1);
+                var params = colourSpec.Params;
+                i = colourSpec.Index;
+                if (params.length >= 5) {
+                    var register = params[0];
+                    if (params[1] === 1) {
+                        palette[register] = Sixel.HlsToRgb(params[2], params[3], params[4]);
+                    }
+                    else {
+                        palette[register] = [
+                            Math.round(Math.min(100, params[2]) * 255 / 100),
+                            Math.round(Math.min(100, params[3]) * 255 / 100),
+                            Math.round(Math.min(100, params[4]) * 255 / 100)
+                        ];
+                    }
+                    colour = palette[register];
+                }
+                else if (params.length >= 1) {
+                    colour = palette[params[0]] || palette[0];
+                }
+                continue;
+            }
+            if (ch === '!') {
+                var repeatSpec = Sixel.ReadParams(data, i + 1);
+                var count = repeatSpec.Params.length > 0 ? repeatSpec.Params[0] : 1;
+                i = repeatSpec.Index;
+                if (i < length && Sixel.IsDataByte(data.charAt(i))) {
+                    var bits = data.charCodeAt(i) - 0x3F;
+                    for (var r = 0; r < count; r++) {
+                        Sixel.PlotSixel(image, width, height, x + r, band * 6, bits, colour);
+                    }
+                    x += count;
+                    i++;
+                }
+                continue;
+            }
+            if (ch === '$') {
+                x = 0;
+                i++;
+                continue;
+            }
+            if (ch === '-') {
+                x = 0;
+                band++;
+                i++;
+                continue;
+            }
+            if (Sixel.IsDataByte(ch)) {
+                Sixel.PlotSixel(image, width, height, x, band * 6, data.charCodeAt(i) - 0x3F, colour);
+                x++;
+                i++;
+                continue;
+            }
+            i++;
+        }
+    };
+    Sixel.PlotSixel = function (image, width, height, x, top, bits, colour) {
+        if (x < 0 || x >= width) {
+            return;
+        }
+        for (var bit = 0; bit < 6; bit++) {
+            if ((bits & (1 << bit)) === 0) {
+                continue;
+            }
+            var y = top + bit;
+            if (y < 0 || y >= height) {
+                continue;
+            }
+            var offset = ((y * width) + x) * 4;
+            image.data[offset] = colour[0];
+            image.data[offset + 1] = colour[1];
+            image.data[offset + 2] = colour[2];
+            image.data[offset + 3] = 255;
+        }
+    };
+    Sixel.IsDataByte = function (ch) {
+        var code = ch.charCodeAt(0);
+        return code >= 0x3F && code <= 0x7E;
+    };
+    Sixel.ReadParams = function (data, index) {
+        var params = [];
+        var current = '';
+        while (index < data.length) {
+            var ch = data.charAt(index);
+            if (ch >= '0' && ch <= '9') {
+                current += ch;
+                index++;
+            }
+            else if (ch === ';') {
+                params.push(current === '' ? 0 : parseInt(current, 10));
+                current = '';
+                index++;
+            }
+            else {
+                break;
+            }
+        }
+        if (current !== '') {
+            params.push(parseInt(current, 10));
+        }
+        return { Params: params, Index: index };
+    };
+    Sixel.HlsToRgb = function (hue, lightness, saturation) {
+        var h = ((hue + 240) % 360) / 360;
+        var l = Math.min(100, lightness) / 100;
+        var s = Math.min(100, saturation) / 100;
+        if (s === 0) {
+            var grey = Math.round(l * 255);
+            return [grey, grey, grey];
+        }
+        var q = l < 0.5 ? l * (1 + s) : l + s - (l * s);
+        var p = (2 * l) - q;
+        return [
+            Math.round(Sixel.HueToChannel(p, q, h + (1 / 3)) * 255),
+            Math.round(Sixel.HueToChannel(p, q, h) * 255),
+            Math.round(Sixel.HueToChannel(p, q, h - (1 / 3)) * 255)
+        ];
+    };
+    Sixel.HueToChannel = function (p, q, t) {
+        if (t < 0) {
+            t += 1;
+        }
+        if (t > 1) {
+            t -= 1;
+        }
+        if (t < 1 / 6) {
+            return p + ((q - p) * 6 * t);
+        }
+        if (t < 1 / 2) {
+            return q;
+        }
+        if (t < 2 / 3) {
+            return p + ((q - p) * ((2 / 3) - t) * 6);
+        }
+        return p;
+    };
+    Sixel.DEFAULT_PALETTE = [
+        [0, 0, 0], [20, 20, 80], [80, 13, 13], [20, 80, 20],
+        [80, 20, 80], [20, 80, 80], [80, 80, 20], [53, 53, 53],
+        [26, 26, 26], [33, 33, 60], [60, 26, 26], [33, 60, 33],
+        [60, 33, 60], [33, 60, 60], [60, 60, 33], [80, 80, 80]
+    ];
+    Sixel.MAX_WIDTH = 4096;
+    Sixel.MAX_HEIGHT = 4096;
+    return Sixel;
+}());
 //# sourceMappingURL=crt.js.map
 var RLoginCommand;
 (function (RLoginCommand) {

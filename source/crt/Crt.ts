@@ -1523,6 +1523,56 @@ class Crt {
     }
 
     /// <summary>
+    /// Blits a decoded sixel image at the cursor, and moves the cursor below
+    /// it the way a real terminal does.
+    /// </summary>
+    /// <remarks>
+    /// Sixel output is pixels, not cells, so it is drawn straight onto the
+    /// canvas. The cell buffer underneath it is marked as holding spaces, so
+    /// a later scroll or clear behaves sensibly, but no attempt is made to
+    /// preserve the image across a redraw - the same as most terminals.
+    /// </remarks>
+    public DrawSixel(image: HTMLCanvasElement | null): void {
+        if (image === null || !this._CanvasContext || !this._Font) { return; }
+
+        var FontWidth: number = this._Font.Width;
+        var FontHeight: number = this._Font.Height;
+        if (!FontWidth || !FontHeight) { return; }
+
+        var PixelX: number = (this.WhereXA() - 1) * FontWidth;
+        var PixelY: number = this._UseModernScrollback
+            ? (this.WhereYA() - 1 + this._ScrollbackSize) * FontHeight
+            : (this.WhereYA() - 1) * FontHeight;
+
+        this._CanvasContext.drawImage(image, PixelX, PixelY);
+
+        // Claim the cells the image covers so scrolling and clearing behave.
+        var Columns: number = Math.ceil(image.width / FontWidth);
+        var Rows: number = Math.ceil(image.height / FontHeight);
+        var StartX: number = this.WhereXA();
+        var StartY: number = this.WhereYA();
+
+        for (var Y: number = StartY; Y < StartY + Rows && Y <= this._ScreenSize.y; Y++) {
+            if (!this._Buffer[Y]) { continue; }
+            for (var X: number = StartX; X < StartX + Columns && X <= this._ScreenSize.x; X++) {
+                if (!this._Buffer[Y][X]) { continue; }
+                this._Buffer[Y][X].Ch = ' ';
+                this._Buffer[Y][X].NeedsRedraw = false;
+            }
+        }
+
+        // Park the cursor on the line below the image, scrolling if needed.
+        // Buffer and pixel maths above are screen-absolute, but GotoXY and
+        // ScrollUpWindow are window-relative, so switch back here.
+        var TargetY: number = this.WhereY() + Rows;
+        while ((TargetY + this.WindMinY) > this.WindMaxY) {
+            this.ScrollUpWindow(1);
+            TargetY--;
+        }
+        this.GotoXY(1, TargetY < 1 ? 1 : TargetY);
+    }
+
+    /// <summary>
     /// Redirects drawing to throwaway canvases until EndOffscreenRender().
     /// Returns false if the swap could not be made, in which case the
     /// caller must not call EndOffscreenRender().
