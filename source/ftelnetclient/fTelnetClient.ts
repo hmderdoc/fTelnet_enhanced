@@ -41,10 +41,17 @@ class fTelnetClient {
     /// </remarks>
     /// <summary>
     /// CTerm revision reported in the Device Attributes reply, as
-    /// 'major;minor'. 1;189 is the minimum Synchronet accepts before it
-    /// will even ask whether sixel is supported.
+    /// 'major;minor'. Synchronet's cterm_lib.js supports_sixel() needs 1.189
+    /// for sixel AND 1.207 before it sends the CTerm Device Attributes query
+    /// (CSI < c) whose pixel-operations bit actually decides sixel, so
+    /// anything below 1.207 never gets sixel from Synchronet. 1;208 is the
+    /// highest revision whose version-gated queries this client answers:
+    /// font dimensions CSI = 3 n (1.198), CTDA (1.207) and XTSMGRAPHICS
+    /// CSI ? 2 ; 1 S (1.208). Raising it further makes cterm_lib send
+    /// queries (base64 fonts 1.213, copy buffers 1.316, ...) that would go
+    /// unanswered and freeze the caller for three seconds each.
     /// </summary>
-    private static CTERM_REVISION: string = '1;189';
+    private static CTERM_REVISION: string = '1;208';
 
     private static MAX_DRAIN_CHUNK_BYTES: number = 65536;
     private static MAX_DRAIN_BYTES_PER_TURN: number = 65536;
@@ -212,6 +219,7 @@ class fTelnetClient {
         this._Ansi.onescCTDA.on((): void => { this.OnAnsiCTDA(); });
         this._Ansi.onescFontState.on((): void => { this.OnAnsiFontState(); });
         this._Ansi.onescModeQuery.on((): void => { this.OnAnsiModeQuery(); });
+        this._Ansi.onescFontDim.on((): void => { this.OnAnsiFontDim(); });
         this._Ansi.onescAudioState.on((channel: number): void => { this.OnAnsiAudioState(channel); });
         this._Ansi.onesc5n.on((): void => { this.OnAnsiESC5n(); });
         this._Ansi.onesc6n.on((): void => { this.OnAnsiESC6n(); });
@@ -894,6 +902,21 @@ class fTelnetClient {
         if (typeof this._Connection === 'undefined') { return; }
         if (!this._Connection.connected) { return; }
         this._Connection.writeString('\x1B[=2n');
+    }
+
+    /// <summary>
+    /// CSI = 3 n  font dimensions query.
+    /// </summary>
+    /// <remarks>
+    /// CTerm replies CSI = 3 ; height ; width n with the current font's cell
+    /// size in pixels. cterm_lib asks it from revision 1.198 (charheight(),
+    /// cterm_screen_geometry()), so it must be answered at the revision we
+    /// report or the caller stalls three seconds.
+    /// </remarks>
+    private OnAnsiFontDim(): void {
+        if (typeof this._Connection === 'undefined') { return; }
+        if (!this._Connection.connected) { return; }
+        this._Connection.writeString('\x1B[=3;' + this._Crt.Font.Height.toString(10) + ';' + this._Crt.Font.Width.toString(10) + 'n');
     }
 
     /// <summary>

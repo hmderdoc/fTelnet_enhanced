@@ -29,6 +29,7 @@ class Ansi {
     public onescCTDA: IEvent = new TypedEvent();
     public onescFontState: IEvent = new TypedEvent();
     public onescModeQuery: IEvent = new TypedEvent();
+    public onescFontDim: IEvent = new TypedEvent();
     public onescAudioState: IEvent = new TypedEvent();
     public onesc5n: IEvent = new TypedEvent();
     public onesc6n: IEvent = new TypedEvent();
@@ -827,7 +828,8 @@ class Ansi {
                 //
                 // Answer only the queries this terminal actually owns and that
                 // cterm_lib issues at the CTerm revision we report: font state
-                // (=1) and mode (=2). NOT a catch-all: =7 is the audio-state
+                // (=1), mode (=2) and font dimensions (=3, asked from 1.198).
+                // NOT a catch-all: =7 is the audio-state
                 // poll, which belongs to whatever host layer implements the
                 // SyncTERM audio sink, and answering it here with a generic
                 // reply corrupts that door's backpressure. Anything else falls
@@ -837,6 +839,7 @@ class Ansi {
                     switch (parseInt(this._AnsiParams[0].substring(1), 10)) {
                         case 1: this.onescFontState.trigger(); break;
                         case 2: this.onescModeQuery.trigger(); break;
+                        case 3: this.onescFontDim.trigger(); break;
                         case 7:
                             // Audio-state poll. The terminal core has no audio
                             // sink, so it forwards the request to whatever host
