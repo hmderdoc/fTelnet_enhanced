@@ -563,6 +563,7 @@ var Ansi = (function () {
         this.onescCTDA = new TypedEvent();
         this.onescFontState = new TypedEvent();
         this.onescModeQuery = new TypedEvent();
+        this.onescFontDim = new TypedEvent();
         this.onescAudioState = new TypedEvent();
         this.onesc5n = new TypedEvent();
         this.onesc6n = new TypedEvent();
@@ -1031,6 +1032,9 @@ var Ansi = (function () {
                             break;
                         case 2:
                             this.onescModeQuery.trigger();
+                            break;
+                        case 3:
+                            this.onescFontDim.trigger();
                             break;
                         case 7:
                             var audioChannel = -1;
@@ -1611,6 +1615,7 @@ var Crt = (function () {
         this._UseModernScrollback = false;
         this._WindMin = 0;
         this._WindMax = (80 - 1) | ((25 - 1) << 8);
+        this._WheelAccumulator = 0;
         this._Container = container;
         this._UseModernScrollback = useModernScrollback;
         this._Font = new CrtFont();
@@ -1636,6 +1641,7 @@ var Crt = (function () {
             this._Canvas.addEventListener('mouseup', function (me) { _this.OnMouseUp(me); }, false);
             window.addEventListener('mouseup', function (me) { _this.OnMouseUpForWindow(me); }, false);
         }
+        this._Canvas.addEventListener('wheel', function (we) { _this.OnMouseWheel(we); }, { passive: true });
         if (!this._Canvas.getContext) {
             console.log('fTelnet Error: Canvas not supported');
         }
@@ -1769,11 +1775,6 @@ var Crt = (function () {
     Crt.prototype.ClrScr = function () {
         this.ScrollUpWindow(this.WindRows);
         this.GotoXY(1, 1);
-        var child = this._Canvas.lastElementChild;
-        while (child) {
-            this._Canvas.removeChild(child);
-            child = this._Canvas.lastElementChild;
-        }
     };
     Crt.prototype.Conceal = function () {
         this.TextColor((this.TextAttr & 0xF0) >> 4);
@@ -1892,6 +1893,10 @@ var Crt = (function () {
         if (this.FastWriteBlocks(text, x, y, charInfo, updateBuffer)) {
             return;
         }
+        if (!this.IsPaletteColourPair(charInfo)) {
+            this.FastWriteGetChar(text, x, y, charInfo, updateBuffer);
+            return;
+        }
         if ((x <= this._ScreenSize.x) && (y <= this._ScreenSize.y)) {
             var Chars = [];
             var CharCodes = [];
@@ -1933,6 +1938,16 @@ var Crt = (function () {
                 }
             }
         }
+    };
+    Crt.prototype.IsPaletteColourPair = function (charInfo) {
+        if (!charInfo) {
+            return true;
+        }
+        if (this._Font && this._Font.Name && this._Font.Name.indexOf('C64') === 0) {
+            return true;
+        }
+        return (CrtFont.ANSI_COLOURS.indexOf(charInfo.Fore24) >= 0) &&
+            (CrtFont.ANSI_COLOURS.indexOf(charInfo.Back24) >= 0);
     };
     Crt.prototype.FastWriteBlocks = function (text, x, y, charInfo, updateBuffer) {
         if (typeof text === 'undefined' || text === null) {
@@ -2576,6 +2591,57 @@ var Crt = (function () {
                     y = 222;
                 }
                 this.onmousereport.trigger('\x1B[M' + String.fromCharCode(button) + String.fromCharCode(x) + String.fromCharCode(y));
+            }
+        }
+    };
+    Crt.prototype.OnMouseWheel = function (we) {
+        if (!this._ReportMouse) {
+            return;
+        }
+        var delta = we.deltaY;
+        if (we.deltaMode === 1) {
+            delta *= Crt.WHEEL_NOTCH_PIXELS;
+        }
+        else if (we.deltaMode === 2) {
+            delta *= Crt.WHEEL_NOTCH_PIXELS * 3;
+        }
+        if (!delta) {
+            return;
+        }
+        if ((this._WheelAccumulator > 0) !== (delta > 0)) {
+            this._WheelAccumulator = 0;
+        }
+        this._WheelAccumulator += delta;
+        var ratio = this._WheelAccumulator / Crt.WHEEL_NOTCH_PIXELS;
+        var notches = ratio < 0 ? Math.ceil(ratio) : Math.floor(ratio);
+        if (notches === 0 && Math.abs(delta) >= Crt.WHEEL_NOTCH_PIXELS / 4) {
+            notches = delta > 0 ? 1 : -1;
+            this._WheelAccumulator = 0;
+        }
+        if (notches === 0) {
+            return;
+        }
+        this._WheelAccumulator -= notches * Crt.WHEEL_NOTCH_PIXELS;
+        var Pos;
+        if (typeof we.offsetX !== 'undefined') {
+            Pos = this.MousePositionToScreenPosition(we.offsetX, we.offsetY);
+        }
+        else {
+            var CanvasOffset = Offset.getOffset(this._Canvas);
+            Pos = this.MousePositionToScreenPosition(we.clientX - CanvasOffset.x, we.clientY - CanvasOffset.y);
+        }
+        Pos.x = Math.max(1, Math.min(this._ScreenSize.x, Pos.x));
+        Pos.y = Math.max(1, Math.min(this._ScreenSize.y, Pos.y));
+        var button = notches > 0 ? 65 : 64;
+        var count = Math.min(Math.abs(notches), 10);
+        for (var i = 0; i < count; i++) {
+            if (this._ReportMouseSgr) {
+                this.onmousereport.trigger('\x1B[<' + button.toString() + ';' + Pos.x.toString() + ';' + Pos.y.toString() + 'M');
+            }
+            else {
+                var x = Math.min(222, '!'.charCodeAt(0) + Pos.x - 1);
+                var y = Math.min(222, '!'.charCodeAt(0) + Pos.y - 1);
+                this.onmousereport.trigger('\x1B[M' + String.fromCharCode(' '.charCodeAt(0) + button) + String.fromCharCode(x) + String.fromCharCode(y));
             }
         }
     };
@@ -3381,27 +3447,6 @@ var Crt = (function () {
         else {
             this.WriteASCII(text);
         }
-        var newAriaText = '';
-        for (var i = 0; i < text.length; i++) {
-            var ch = text.charCodeAt(i);
-            if ((ch == 10) || (ch == 13)) {
-                if (newAriaText.trim() !== '') {
-                    var newDiv = document.createElement('div');
-                    newDiv.innerText = newAriaText;
-                    this._Canvas.appendChild(newDiv);
-                    newAriaText = '';
-                }
-            }
-            else if ((ch >= 32) && (ch <= 126)) {
-                newAriaText += text[i];
-            }
-        }
-        if (newAriaText.trim() !== '') {
-            var newDiv = document.createElement('div');
-            newDiv.innerText = newAriaText;
-            this._Canvas.appendChild(newDiv);
-            newAriaText = '';
-        }
     };
     Crt.prototype.WriteASCII = function (text) {
         if (typeof text === 'undefined') {
@@ -3867,6 +3912,7 @@ var Crt = (function () {
     Crt.PETSCII_LIGHTGREEN = 13;
     Crt.PETSCII_LIGHTBLUE = 14;
     Crt.PETSCII_LIGHTGRAY = 15;
+    Crt.WHEEL_NOTCH_PIXELS = 100;
     return Crt;
 }());
 var CrtFont = (function () {
@@ -3898,6 +3944,11 @@ var CrtFont = (function () {
         lru.push(key);
         while (lru.length > max) {
             var evicted = lru.shift();
+            var entry = cache[evicted];
+            if (entry && typeof HTMLCanvasElement !== 'undefined' && entry instanceof HTMLCanvasElement) {
+                entry.width = 0;
+                entry.height = 0;
+            }
             delete cache[evicted];
         }
     };
@@ -6101,6 +6152,7 @@ var fTelnetClient = (function () {
         this._Ansi.onescCTDA.on(function () { _this.OnAnsiCTDA(); });
         this._Ansi.onescFontState.on(function () { _this.OnAnsiFontState(); });
         this._Ansi.onescModeQuery.on(function () { _this.OnAnsiModeQuery(); });
+        this._Ansi.onescFontDim.on(function () { _this.OnAnsiFontDim(); });
         this._Ansi.onescAudioState.on(function (channel) { _this.OnAnsiAudioState(channel); });
         this._Ansi.onesc5n.on(function () { _this.OnAnsiESC5n(); });
         this._Ansi.onesc6n.on(function () { _this.OnAnsiESC6n(); });
@@ -6683,6 +6735,15 @@ var fTelnetClient = (function () {
         }
         this._Connection.writeString('\x1B[=2n');
     };
+    fTelnetClient.prototype.OnAnsiFontDim = function () {
+        if (typeof this._Connection === 'undefined') {
+            return;
+        }
+        if (!this._Connection.connected) {
+            return;
+        }
+        this._Connection.writeString('\x1B[=3;' + this._Crt.Font.Height.toString(10) + ';' + this._Crt.Font.Width.toString(10) + 'n');
+    };
     fTelnetClient.prototype.OnAnsiAudioState = function (channel) {
         if (typeof this._Connection === 'undefined') {
             return;
@@ -7122,7 +7183,7 @@ var fTelnetClient = (function () {
         enumerable: true,
         configurable: true
     });
-    fTelnetClient.CTERM_REVISION = '1;189';
+    fTelnetClient.CTERM_REVISION = '1;208';
     fTelnetClient.MAX_DRAIN_CHUNK_BYTES = 65536;
     fTelnetClient.MAX_DRAIN_BYTES_PER_TURN = 65536;
     return fTelnetClient;

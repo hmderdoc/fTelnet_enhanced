@@ -112,6 +112,13 @@ class CrtFont {
 
         while (lru.length > max) {
             var evicted: string = <string>lru.shift();
+            var entry: any = cache[evicted];
+            // A canvas keeps its raster until the element is collected, and
+            // the GC does not see that cost. Zeroing the size frees it now.
+            if (entry && typeof HTMLCanvasElement !== 'undefined' && entry instanceof HTMLCanvasElement) {
+                entry.width = 0;
+                entry.height = 0;
+            }
             delete cache[evicted];
         }
     }

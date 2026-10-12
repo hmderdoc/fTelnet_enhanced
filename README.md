@@ -27,7 +27,23 @@ every cell.
 
 **Bounded glyph caches.** Cache keys include the 24-bit colours, so with
 truecolor an unbounded cache grows until the tab dies. Both caches are now
-LRU-bounded.
+LRU-bounded, evicted sheet canvases release their raster immediately, and
+truecolor glyphs go through the small per-glyph cache rather than baking a
+whole glyph sheet per colour pair (gradient art was baking ~300 sheets a
+second and discarding them).
+
+**Wheel reporting.** With mouse reporting on, wheel motion is reported as
+buttons 64/65 (SGR or X10 form to match the mode), one report per notch
+with trackpad deltas accumulated, which is what SyncTERM sends and what a
+Synchronet host with `CON_MOUSE_SCROLL` translates to up/down. With
+reporting off nothing is sent, so a host can fall back to arrow keys.
+
+**No DOM growth.** Upstream appended a hidden `<div>` under the canvas for
+every printed text run as screen-reader fallback, removed only on a full
+screen clear. Anything that repaints in place without clearing (idle
+screensavers, live boards) grew the DOM without bound: measured at ~580 divs
+a second and ~30 MB a minute of renderer memory, 880,000 divs after fifteen
+minutes. The fallback is removed; the canvas is the only thing shown.
 
 **Unthrottled rendering.** `Options.BitsPerSecond = 0` drains the receive
 buffer instead of pacing reads to emulate a modem, and continuations run on
