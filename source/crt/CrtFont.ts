@@ -20,6 +20,9 @@
 class CrtFont {
     // Events
     public onchange: IEvent = new TypedEvent();
+    // Raised when the glyph source had to be rebuilt (canvas restored by the
+    // browser, or a stuck load recovered), so the Crt must repaint every cell.
+    public onrestore: IEvent = new TypedEvent();
 
     public static TRANSPARENT_CHARCODE: number = 1000;
 
@@ -39,6 +42,16 @@ class CrtFont {
     /// </remarks>
     public static MAX_CHARS_MAP_ENTRIES: number = 48;
     public static MAX_CHAR_MAP_ENTRIES: number = 4096;
+
+    /// <summary>
+    /// How long a font PNG may stay loading before it is treated as stuck.
+    /// </summary>
+    /// <remarks>
+    /// Glyph lookups return undefined for as long as a load is in flight, so
+    /// a load whose onload/onerror never fires (seen as a suspect in hidden
+    /// tabs left open overnight) stops every 16-colour write from painting.
+    /// </remarks>
+    public static STUCK_LOAD_MS: number = 10000;
 
     // Public variables
     public static ANSI_COLOURS: number[] = [
@@ -75,6 +88,7 @@ class CrtFont {
     private _CharMapLru: string[] = [];
     private _CharsMapLru: string[] = [];
     private _Loading: number;
+    private _LoadStartedAt: number = 0;
     private _Name: string;
     private _NewName: string;
     private _NewSize: Point;
@@ -97,6 +111,11 @@ class CrtFont {
         if (this._Canvas.getContext) {
             var CanvasContext = this._Canvas.getContext('2d');
             if (CanvasContext !== null) { this._CanvasContext = CanvasContext; } // TODOX Handle error when CanvasContext is null
+            // A restored 2D canvas comes back cleared, and every glyph sheet
+            // built from it afterwards would be blank.
+            this._Canvas.addEventListener('contextrestored', (): void => {
+                if (this.Recover()) { this.onrestore.trigger(); }
+            }, false);
             this.Load(this._Name, this._Size.x, this._Size.y);
         }
     }
@@ -315,6 +334,7 @@ class CrtFont {
             CrtFont.ANSI_COLOURS[0] = 0x000000;
 
             this._Loading += 1;
+            this._LoadStartedAt = Date.now();
             this._NewName = font;
             this._NewSize = new Point(BestFit.x, BestFit.y);
 
@@ -352,30 +372,121 @@ class CrtFont {
         this._Png.onload = (): void => { this.OnPngLoad(); };
         this._Png.onerror = (): void => {
             alert('fTelnet Error: Unable to load requested font');
-            this._Loading -= 1;
+            this.FinishOneLoad();
         };
         this._Png.src = CrtFonts.GetRemoteUrl(this._NewName, this._NewSize.x, this._NewSize.y);
     }
 
     private OnPngLoad(): void {
-        if (this._Loading === 1) {
-            var oldSize = new Point(this._Size.x, this._Size.y);
-
-            this._Name = this._NewName;
-            this._Size = this._NewSize;
-
-            // Reset Canvas
-            this._Canvas.width = this._Png.width;
-            this._Canvas.height = this._Png.height;
-            this._CanvasContext.drawImage(this._Png, 0, 0);
-
-            // Raise change event
-            this._Loading -= 1;
-            this.onchange.trigger(oldSize);
+        // <= 1 rather than === 1: after Recover() has given up on a load,
+        // the count is already 0 when that load's late onload arrives, and
+        // it should still be applied. The complete check stops a late onload
+        // from an older, replaced Image applying a _Png that has not loaded.
+        if ((this._Loading <= 1) && this.PngReady()) {
+            this.ApplyPng();
         } else {
             // Others are still loading, just indicate this one finished
-            this._Loading -= 1;
+            this.FinishOneLoad();
         }
+    }
+
+    private FinishOneLoad(): void {
+        this._Loading = Math.max(0, this._Loading - 1);
+    }
+
+    private PngReady(): boolean {
+        return (typeof this._Png !== 'undefined') && this._Png.complete && (this._Png.naturalWidth > 0);
+    }
+
+    private ApplyPng(): void {
+        var oldSize = new Point(this._Size.x, this._Size.y);
+
+        this._Name = this._NewName;
+        this._Size = this._NewSize;
+
+        // Reset Canvas
+        this._Canvas.width = this._Png.width;
+        this._Canvas.height = this._Png.height;
+        this._CanvasContext.drawImage(this._Png, 0, 0);
+
+        // Raise change event
+        this._Loading = 0;
+        this.onchange.trigger(oldSize);
+    }
+
+    /// <summary>
+    /// True when a font PNG has been loading for longer than STUCK_LOAD_MS.
+    /// </summary>
+    public get LoadStuck(): boolean {
+        return (this._Loading > 0) && (Date.now() - this._LoadStartedAt > CrtFont.STUCK_LOAD_MS);
+    }
+
+    /// <summary>
+    /// Rebuilds everything glyph drawing depends on. Returns false if nothing
+    /// could be done yet (a load is legitimately in flight, or the canvas is
+    /// lost and will be handled by its contextrestored event).
+    /// </summary>
+    /// <remarks>
+    /// Both glyph caches are dropped, because a cached sheet canvas whose
+    /// backing store the browser discarded draws as transparent: nothing
+    /// changes on screen, and whatever was there before shows through. The
+    /// font canvas is redrawn from the PNG for the same reason.
+    ///
+    /// A load stuck past STUCK_LOAD_MS is resolved here. If the PNG did
+    /// arrive and the event was missed, it is applied (onchange fires, and
+    /// the Crt repaints from that). Otherwise the load is restarted.
+    /// </remarks>
+    public Recover(): boolean {
+        if (this._Loading > 0) {
+            if (!this.LoadStuck) { return false; }
+
+            if (this.PngReady()) {
+                this.DropCaches();
+                this.ApplyPng();
+                return true;
+            }
+
+            this._Loading = 1;
+            this._LoadStartedAt = Date.now();
+            this._Png = new Image();
+            this._Png.crossOrigin = 'Anonymous';
+            this._Png.onload = (): void => { this.OnPngLoad(); };
+            this._Png.onerror = (): void => { this.OnPngError(); };
+            this._Png.src = CrtFonts.GetLocalUrl(this._NewName, this._NewSize.x, this._NewSize.y);
+            return false;
+        }
+
+        if (!this.PngReady()) { return false; }
+        if (CrtFont.IsContextLost(this._CanvasContext)) { return false; }
+
+        this.DropCaches();
+        this._Canvas.width = this._Png.width;
+        this._Canvas.height = this._Png.height;
+        this._CanvasContext.drawImage(this._Png, 0, 0);
+        return true;
+    }
+
+    private DropCaches(): void {
+        for (var key in this._CharsMap) {
+            var entry: any = this._CharsMap[key];
+            if (entry && entry instanceof HTMLCanvasElement) {
+                entry.width = 0;
+                entry.height = 0;
+            }
+        }
+        this._CharsMap = [];
+        this._CharsMapLru = [];
+        this._CharMap = [];
+        this._CharMapLru = [];
+    }
+
+    /// <summary>
+    /// isContextLost() where the browser has it (Chrome 99+, Firefox 125+),
+    /// false elsewhere.
+    /// </summary>
+    public static IsContextLost(context: CanvasRenderingContext2D): boolean {
+        var ctx: any = context;
+        return !!(ctx && typeof ctx.isContextLost === 'function' && ctx.isContextLost());
     }
 
     public get Size(): Point {

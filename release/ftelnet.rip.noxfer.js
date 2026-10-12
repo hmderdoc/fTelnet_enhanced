@@ -1609,6 +1609,7 @@ var Crt = (function () {
         this._SkipRedrawWhenSameFontSize = false;
         this._OffscreenSaved = null;
         this._PendingWrap = false;
+        this._RecoveryCount = 0;
         this._ReportPhysicalKeys = false;
         this._PhysicalKeysDown = {};
         this._Transparent = false;
@@ -1620,6 +1621,7 @@ var Crt = (function () {
         this._UseModernScrollback = useModernScrollback;
         this._Font = new CrtFont();
         this._Font.onchange.on(function (oldSize) { _this.OnFontChanged(oldSize); });
+        this._Font.onrestore.on(function () { _this.RecoverRendering('font canvas restored'); });
         this._Canvas = document.createElement('canvas');
         this._Canvas.className = 'fTelnetCrtCanvas';
         this._Canvas.setAttribute('aria-live', 'polite');
@@ -1642,6 +1644,13 @@ var Crt = (function () {
             window.addEventListener('mouseup', function (me) { _this.OnMouseUpForWindow(me); }, false);
         }
         this._Canvas.addEventListener('wheel', function (we) { _this.OnMouseWheel(we); }, { passive: true });
+        this._Canvas.addEventListener('contextrestored', function () {
+            if (_this._UseModernScrollback && _this._CanvasContext) {
+                _this._CanvasContext.fillStyle = 'black';
+                _this._CanvasContext.fillRect(0, 0, _this._Canvas.width, _this._Canvas.height);
+            }
+            _this.RecoverRendering('canvas restored');
+        }, false);
         if (!this._Canvas.getContext) {
             console.log('fTelnet Error: Canvas not supported');
         }
@@ -2987,6 +2996,9 @@ var Crt = (function () {
         if (!this._Buffer || !this._ScreenSize) {
             return 0;
         }
+        if (this._Font && this._Font.LoadStuck) {
+            this.RecoverRendering('font load stuck');
+        }
         if (this._Font && this._Font.Loading > 0) {
             return 0;
         }
@@ -3004,6 +3016,118 @@ var Crt = (function () {
             }
         }
         return flushed;
+    };
+    Crt.prototype.RecoverRendering = function (reason) {
+        if (this._OffscreenSaved !== null) {
+            return false;
+        }
+        if (!this._Buffer || !this._ScreenSize || !this._CanvasContext) {
+            return false;
+        }
+        if (CrtFont.IsContextLost(this._CanvasContext)) {
+            return false;
+        }
+        this._Font.Recover();
+        this.ReplaceTempCanvas();
+        this.InvalidateAll();
+        this.FlushNeedsRedraw();
+        this._RecoveryCount++;
+        console.log('fTelnet: rendering recovered' + (reason ? ' (' + reason + ')' : '') + ', #' + this._RecoveryCount);
+        return true;
+    };
+    Object.defineProperty(Crt.prototype, "RecoveryCount", {
+        get: function () {
+            return this._RecoveryCount;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Crt.prototype.ReplaceTempCanvas = function () {
+        var NewTemp = document.createElement('canvas');
+        NewTemp.width = this._Canvas.width;
+        NewTemp.height = this._Canvas.height;
+        var NewTempContext = NewTemp.getContext('2d');
+        if (NewTempContext === null) {
+            return;
+        }
+        NewTempContext.font = '12pt monospace';
+        NewTempContext.textBaseline = 'top';
+        if (this._TempCanvas) {
+            this._TempCanvas.width = 0;
+            this._TempCanvas.height = 0;
+        }
+        this._TempCanvas = NewTemp;
+        this._TempCanvasContext = NewTempContext;
+    };
+    Crt.prototype.CheckRendering = function (maxSamples) {
+        if (typeof maxSamples === 'undefined') {
+            maxSamples = 32;
+        }
+        if (this._OffscreenSaved !== null) {
+            return 0;
+        }
+        if (!this._Buffer || !this._ScreenSize || !this._CanvasContext || !this._Font) {
+            return 0;
+        }
+        if (this._Font.Loading > 0 || this._Transparent) {
+            return 0;
+        }
+        if (this._Font.Name && this._Font.Name.indexOf('C64') === 0) {
+            return 0;
+        }
+        if (!this._UseModernScrollback && this._InScrollback) {
+            return 0;
+        }
+        if (CrtFont.IsContextLost(this._CanvasContext)) {
+            return 0;
+        }
+        var Candidates = [];
+        for (var Y = 1; Y <= this._ScreenSize.y; Y++) {
+            if (!this._Buffer[Y]) {
+                continue;
+            }
+            for (var X = 1; X <= this._ScreenSize.x; X++) {
+                var Cell = this._Buffer[Y][X];
+                if (!Cell || Cell.NeedsRedraw || Cell.Blink || Cell.Underline) {
+                    continue;
+                }
+                if (Cell.Ch !== ' ' && Cell.Ch !== '\0') {
+                    continue;
+                }
+                Candidates.push(new Point(X, Y));
+            }
+        }
+        if (Candidates.length === 0) {
+            return 0;
+        }
+        var FontWidth = this._Font.Width;
+        var FontHeight = this._Font.Height;
+        var YOffset = this._UseModernScrollback ? this._ScrollbackSize : 0;
+        var Pixels;
+        try {
+            Pixels = this._CanvasContext.getImageData(0, YOffset * FontHeight, this._ScreenSize.x * FontWidth, this._ScreenSize.y * FontHeight).data;
+        }
+        catch (e) {
+            return 0;
+        }
+        var RowStride = this._ScreenSize.x * FontWidth * 4;
+        var Step = Math.max(1, Math.floor(Candidates.length / maxSamples));
+        var Mismatches = 0;
+        for (var i = 0; i < Candidates.length; i += Step) {
+            var P = Candidates[i];
+            var Sample = this._Buffer[P.y][P.x];
+            var Expected = (Sample.Reverse ? Sample.Fore24 : Sample.Back24) & 0xFFFFFF;
+            var PX = (P.x - 1) * FontWidth + Math.floor(FontWidth / 2);
+            var PY = (P.y - 1) * FontHeight + Math.floor(FontHeight / 2);
+            var Idx = PY * RowStride + PX * 4;
+            if ((Math.abs(Pixels[Idx] - (Expected >> 16)) > 2) ||
+                (Math.abs(Pixels[Idx + 1] - ((Expected >> 8) & 0xFF)) > 2) ||
+                (Math.abs(Pixels[Idx + 2] - (Expected & 0xFF)) > 2) ||
+                (Pixels[Idx + 3] < 250)) {
+                Mismatches++;
+            }
+        }
+        return Mismatches;
     };
     Object.defineProperty(Crt.prototype, "BellEnabled", {
         get: function () {
@@ -3917,9 +4041,12 @@ var Crt = (function () {
 }());
 var CrtFont = (function () {
     function CrtFont() {
+        var _this = this;
         this.onchange = new TypedEvent();
+        this.onrestore = new TypedEvent();
         this._CharMapLru = [];
         this._CharsMapLru = [];
+        this._LoadStartedAt = 0;
         this._CharMap = [];
         this._CharsMap = [];
         this._Name = 'CP437';
@@ -3933,6 +4060,11 @@ var CrtFont = (function () {
             if (CanvasContext !== null) {
                 this._CanvasContext = CanvasContext;
             }
+            this._Canvas.addEventListener('contextrestored', function () {
+                if (_this.Recover()) {
+                    _this.onrestore.trigger();
+                }
+            }, false);
             this.Load(this._Name, this._Size.x, this._Size.y);
         }
     }
@@ -4106,6 +4238,7 @@ var CrtFont = (function () {
             CrtFont.ANSI_COLOURS[7] = 0xA8A8A8;
             CrtFont.ANSI_COLOURS[0] = 0x000000;
             this._Loading += 1;
+            this._LoadStartedAt = Date.now();
             this._NewName = font;
             this._NewSize = new Point(BestFit.x, BestFit.y);
             if (font.indexOf('Atari') === 0) {
@@ -4141,24 +4274,89 @@ var CrtFont = (function () {
         this._Png.onload = function () { _this.OnPngLoad(); };
         this._Png.onerror = function () {
             alert('fTelnet Error: Unable to load requested font');
-            _this._Loading -= 1;
+            _this.FinishOneLoad();
         };
         this._Png.src = CrtFonts.GetRemoteUrl(this._NewName, this._NewSize.x, this._NewSize.y);
     };
     CrtFont.prototype.OnPngLoad = function () {
-        if (this._Loading === 1) {
-            var oldSize = new Point(this._Size.x, this._Size.y);
-            this._Name = this._NewName;
-            this._Size = this._NewSize;
-            this._Canvas.width = this._Png.width;
-            this._Canvas.height = this._Png.height;
-            this._CanvasContext.drawImage(this._Png, 0, 0);
-            this._Loading -= 1;
-            this.onchange.trigger(oldSize);
+        if ((this._Loading <= 1) && this.PngReady()) {
+            this.ApplyPng();
         }
         else {
-            this._Loading -= 1;
+            this.FinishOneLoad();
         }
+    };
+    CrtFont.prototype.FinishOneLoad = function () {
+        this._Loading = Math.max(0, this._Loading - 1);
+    };
+    CrtFont.prototype.PngReady = function () {
+        return (typeof this._Png !== 'undefined') && this._Png.complete && (this._Png.naturalWidth > 0);
+    };
+    CrtFont.prototype.ApplyPng = function () {
+        var oldSize = new Point(this._Size.x, this._Size.y);
+        this._Name = this._NewName;
+        this._Size = this._NewSize;
+        this._Canvas.width = this._Png.width;
+        this._Canvas.height = this._Png.height;
+        this._CanvasContext.drawImage(this._Png, 0, 0);
+        this._Loading = 0;
+        this.onchange.trigger(oldSize);
+    };
+    Object.defineProperty(CrtFont.prototype, "LoadStuck", {
+        get: function () {
+            return (this._Loading > 0) && (Date.now() - this._LoadStartedAt > CrtFont.STUCK_LOAD_MS);
+        },
+        enumerable: true,
+        configurable: true
+    });
+    CrtFont.prototype.Recover = function () {
+        var _this = this;
+        if (this._Loading > 0) {
+            if (!this.LoadStuck) {
+                return false;
+            }
+            if (this.PngReady()) {
+                this.DropCaches();
+                this.ApplyPng();
+                return true;
+            }
+            this._Loading = 1;
+            this._LoadStartedAt = Date.now();
+            this._Png = new Image();
+            this._Png.crossOrigin = 'Anonymous';
+            this._Png.onload = function () { _this.OnPngLoad(); };
+            this._Png.onerror = function () { _this.OnPngError(); };
+            this._Png.src = CrtFonts.GetLocalUrl(this._NewName, this._NewSize.x, this._NewSize.y);
+            return false;
+        }
+        if (!this.PngReady()) {
+            return false;
+        }
+        if (CrtFont.IsContextLost(this._CanvasContext)) {
+            return false;
+        }
+        this.DropCaches();
+        this._Canvas.width = this._Png.width;
+        this._Canvas.height = this._Png.height;
+        this._CanvasContext.drawImage(this._Png, 0, 0);
+        return true;
+    };
+    CrtFont.prototype.DropCaches = function () {
+        for (var key in this._CharsMap) {
+            var entry = this._CharsMap[key];
+            if (entry && entry instanceof HTMLCanvasElement) {
+                entry.width = 0;
+                entry.height = 0;
+            }
+        }
+        this._CharsMap = [];
+        this._CharsMapLru = [];
+        this._CharMap = [];
+        this._CharMapLru = [];
+    };
+    CrtFont.IsContextLost = function (context) {
+        var ctx = context;
+        return !!(ctx && typeof ctx.isContextLost === 'function' && ctx.isContextLost());
     };
     Object.defineProperty(CrtFont.prototype, "Size", {
         get: function () {
@@ -4177,6 +4375,7 @@ var CrtFont = (function () {
     CrtFont.TRANSPARENT_CHARCODE = 1000;
     CrtFont.MAX_CHARS_MAP_ENTRIES = 48;
     CrtFont.MAX_CHAR_MAP_ENTRIES = 4096;
+    CrtFont.STUCK_LOAD_MS = 10000;
     CrtFont.ANSI_COLOURS = [
         0x000000, 0x0000A8, 0x00A800, 0x00A8A8, 0xA80000, 0xA800A8, 0xA85400, 0xA8A8A8,
         0x545454, 0x5454FC, 0x54FC54, 0x54FCFC, 0xFC5454, 0xFC54FC, 0xFCFC54, 0xFCFCFC

@@ -56,6 +56,15 @@ stops pumping while its terminal is hidden can catch up in one frame instead
 of rendering everything it missed. `Poll()` covers hosts where an `ondata`
 event can be missed.
 
+**Rendering recovery.** `Crt.RecoverRendering()` rebuilds the glyph caches,
+font canvas and scroll scratch canvas and repaints every cell from the buffer.
+It covers a browser discarding canvas backing stores in a background tab and
+a font load that never completes. It runs on `contextrestored` and from a
+10-second stuck-load watchdog in `FlushNeedsRedraw()`. `Crt.CheckRendering()`
+samples blank cells against their buffered background with a single readback,
+so a host can test on return from hidden. See
+`NOTES-stale-canvas-after-idle.md`.
+
 **Sixel graphics.** `ESC P ... q ... ESC \` is decoded and drawn. Colour
 registers in RGB and HLS, repeat counts, carriage return and newline, raster
 attributes, and the VT340 default palette. Other device control strings are

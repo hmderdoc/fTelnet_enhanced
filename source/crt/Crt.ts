@@ -115,6 +115,7 @@ class Crt {
     // column; the line wrap it implies is deferred until the next printable
     // character actually arrives. Cleared by any explicit cursor move.
     private _PendingWrap: boolean = false;
+    private _RecoveryCount: number = 0;
     // CTerm physical key reporting (CSI = 1 h / CSI = 1 l) and the set of
     // evdev codes currently held, so auto-repeat does not re-report a press.
     private _ReportPhysicalKeys: boolean = false;
@@ -135,6 +136,7 @@ class Crt {
 
         this._Font = new CrtFont();
         this._Font.onchange.on((oldSize: Point): void => { this.OnFontChanged(oldSize); });
+        this._Font.onrestore.on((): void => { this.RecoverRendering('font canvas restored'); });
 
         // Create the canvas
         this._Canvas = document.createElement('canvas');
@@ -163,6 +165,15 @@ class Crt {
         // Wheel reporting is useful on every device class; it does nothing
         // unless the host has turned mouse reporting on.
         this._Canvas.addEventListener('wheel', (we: WheelEvent): void => { this.OnMouseWheel(we); }, { passive: true });
+        // The browser may drop a 2D canvas's backing store (GPU reset, a
+        // hidden tab under memory pressure). It comes back cleared.
+        this._Canvas.addEventListener('contextrestored', (): void => {
+            if (this._UseModernScrollback && this._CanvasContext) {
+                this._CanvasContext.fillStyle = 'black';
+                this._CanvasContext.fillRect(0, 0, this._Canvas.width, this._Canvas.height);
+            }
+            this.RecoverRendering('canvas restored');
+        }, false);
 
         // Check for Canvas support
         if (!this._Canvas.getContext) {
@@ -1799,6 +1810,7 @@ class Crt {
     /// </remarks>
     public FlushNeedsRedraw(): number {
         if (!this._Buffer || !this._ScreenSize) { return 0; }
+        if (this._Font && this._Font.LoadStuck) { this.RecoverRendering('font load stuck'); }
         if (this._Font && this._Font.Loading > 0) { return 0; }
 
         var flushed: number = 0;
@@ -1814,6 +1826,131 @@ class Crt {
         }
 
         return flushed;
+    }
+
+    /// <summary>
+    /// Rebuilds everything the canvas is drawn from and repaints every cell
+    /// from the buffer. Returns false if it could not run now.
+    /// </summary>
+    /// <remarks>
+    /// A terminal left in a background tab overnight came back with pieces
+    /// of earlier screens on it that no clear would remove. A clear works by
+    /// drawing a blank over each cell, so when one fails the draw itself is
+    /// doing nothing. The suspects are a glyph sheet or scratch canvas whose
+    /// backing store the browser discarded (it then draws as transparent and
+    /// the old pixels show through), or a font load stuck in flight (every
+    /// 16-colour write is then skipped). This drops the glyph caches,
+    /// redraws the font canvas, resolves a stuck load, replaces the scroll
+    /// scratch canvas and repaints. Costs about one full-screen paint.
+    ///
+    /// Scrollback pixels above the screen have no buffer behind them and are
+    /// left as they are.
+    /// </remarks>
+    public RecoverRendering(reason?: string): boolean {
+        if (this._OffscreenSaved !== null) { return false; }
+        if (!this._Buffer || !this._ScreenSize || !this._CanvasContext) { return false; }
+        // Drawing to a lost context is a no-op; contextrestored calls back.
+        if (CrtFont.IsContextLost(this._CanvasContext)) { return false; }
+
+        this._Font.Recover();
+        this.ReplaceTempCanvas();
+
+        this.InvalidateAll();
+        // If a font load is still in flight the cells stay flagged, and the
+        // next FlushNeedsRedraw() after it lands paints them.
+        this.FlushNeedsRedraw();
+
+        this._RecoveryCount++;
+        console.log('fTelnet: rendering recovered' + (reason ? ' (' + reason + ')' : '') + ', #' + this._RecoveryCount);
+        return true;
+    }
+
+    /// <summary>
+    /// Number of times RecoverRendering() has run, for diagnostics.
+    /// </summary>
+    public get RecoveryCount(): number {
+        return this._RecoveryCount;
+    }
+
+    private ReplaceTempCanvas(): void {
+        var NewTemp: HTMLCanvasElement = document.createElement('canvas');
+        NewTemp.width = this._Canvas.width;
+        NewTemp.height = this._Canvas.height;
+        var NewTempContext = NewTemp.getContext('2d');
+        if (NewTempContext === null) { return; }
+        NewTempContext.font = '12pt monospace';
+        NewTempContext.textBaseline = 'top';
+
+        if (this._TempCanvas) {
+            this._TempCanvas.width = 0;
+            this._TempCanvas.height = 0;
+        }
+        this._TempCanvas = NewTemp;
+        this._TempCanvasContext = NewTempContext;
+    }
+
+    /// <summary>
+    /// Compares the canvas against the buffer at a sample of blank cells and
+    /// returns how many disagree. 0 means nothing wrong was found.
+    /// </summary>
+    /// <remarks>
+    /// A blank cell is the background colour all over, so the centre pixel
+    /// can be checked without knowing the glyph. Cells that blink, are
+    /// underlined, or are waiting on a redraw are skipped, as are PETSCII and
+    /// transparent mode. One getImageData covers every sample, so it is a
+    /// single GPU readback: cheap occasionally, not something to run every
+    /// frame.
+    /// </remarks>
+    public CheckRendering(maxSamples?: number): number {
+        if (typeof maxSamples === 'undefined') { maxSamples = 32; }
+        if (this._OffscreenSaved !== null) { return 0; }
+        if (!this._Buffer || !this._ScreenSize || !this._CanvasContext || !this._Font) { return 0; }
+        if (this._Font.Loading > 0 || this._Transparent) { return 0; }
+        if (this._Font.Name && this._Font.Name.indexOf('C64') === 0) { return 0; }
+        if (!this._UseModernScrollback && this._InScrollback) { return 0; }
+        if (CrtFont.IsContextLost(this._CanvasContext)) { return 0; }
+
+        var Candidates: Point[] = [];
+        for (var Y: number = 1; Y <= this._ScreenSize.y; Y++) {
+            if (!this._Buffer[Y]) { continue; }
+            for (var X: number = 1; X <= this._ScreenSize.x; X++) {
+                var Cell: CharInfo = this._Buffer[Y][X];
+                if (!Cell || Cell.NeedsRedraw || Cell.Blink || Cell.Underline) { continue; }
+                if (Cell.Ch !== ' ' && Cell.Ch !== '\0') { continue; }
+                Candidates.push(new Point(X, Y));
+            }
+        }
+        if (Candidates.length === 0) { return 0; }
+
+        var FontWidth: number = this._Font.Width;
+        var FontHeight: number = this._Font.Height;
+        var YOffset: number = this._UseModernScrollback ? this._ScrollbackSize : 0;
+        var Pixels: Uint8ClampedArray;
+        try {
+            Pixels = this._CanvasContext.getImageData(0, YOffset * FontHeight, this._ScreenSize.x * FontWidth, this._ScreenSize.y * FontHeight).data;
+        } catch (e) {
+            return 0;
+        }
+        var RowStride: number = this._ScreenSize.x * FontWidth * 4;
+
+        var Step: number = Math.max(1, Math.floor(Candidates.length / maxSamples));
+        var Mismatches: number = 0;
+        for (var i: number = 0; i < Candidates.length; i += Step) {
+            var P: Point = Candidates[i];
+            var Sample: CharInfo = this._Buffer[P.y][P.x];
+            var Expected: number = (Sample.Reverse ? Sample.Fore24 : Sample.Back24) & 0xFFFFFF;
+            var PX: number = (P.x - 1) * FontWidth + Math.floor(FontWidth / 2);
+            var PY: number = (P.y - 1) * FontHeight + Math.floor(FontHeight / 2);
+            var Idx: number = PY * RowStride + PX * 4;
+            if ((Math.abs(Pixels[Idx] - (Expected >> 16)) > 2) ||
+                (Math.abs(Pixels[Idx + 1] - ((Expected >> 8) & 0xFF)) > 2) ||
+                (Math.abs(Pixels[Idx + 2] - (Expected & 0xFF)) > 2) ||
+                (Pixels[Idx + 3] < 250)) {
+                Mismatches++;
+            }
+        }
+
+        return Mismatches;
     }
 
     public get BellEnabled(): boolean {
