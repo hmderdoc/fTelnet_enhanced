@@ -101,6 +101,10 @@ class Crt {
     private _SoundVolume: number = 0.2;
     private _ReportMouse: boolean;
     private _ReportMouseSgr: boolean;
+    // 0 = no movement reports, 1 = while a button is held (CSI ? 1002 h),
+    // 2 = always (CSI ? 1003 h)
+    private _ReportMouseMotion: number = 0;
+    private _MouseReportPoint: Point;
     private _ScreenSize: Point = new Point(80, 25);
     private _Scrollback: CharInfo[][];
     private _ScrollbackPosition: number = -1;
@@ -1339,7 +1343,49 @@ class Crt {
         }
     }
 
+    /// <summary>
+    /// Reports pointer movement to the host when it asked for it with
+    /// CSI ? 1002 h (while a button is held) or CSI ? 1003 h (always). One
+    /// report per cell entered, as button + 32; with no button held the
+    /// report is for button 0, which is what SyncTERM sends.
+    /// </summary>
+    private ReportMouseMove(me: MouseEvent): void {
+        var held: number = -1;
+        if (typeof me.buttons === 'number') {
+            if (me.buttons & 1) { held = 0; } else if (me.buttons & 4) { held = 1; } else if (me.buttons & 2) { held = 2; }
+        } else if (typeof this._MouseDownPoint !== 'undefined') {
+            held = 0;
+        }
+        if ((held < 0) && (this._ReportMouseMotion !== 2)) { return; }
+
+        var Pos: Point;
+        if (typeof me.offsetX !== 'undefined') {
+            Pos = this.MousePositionToScreenPosition(me.offsetX, me.offsetY);
+        } else {
+            var CanvasOffset = Offset.getOffset(this._Canvas);
+            Pos = this.MousePositionToScreenPosition(me.clientX - CanvasOffset.x, me.clientY - CanvasOffset.y);
+        }
+        Pos.x = Math.max(1, Math.min(this._ScreenSize.x, Pos.x));
+        Pos.y = Math.max(1, Math.min(this._ScreenSize.y, Pos.y));
+
+        if ((typeof this._MouseReportPoint !== 'undefined') && (this._MouseReportPoint.x === Pos.x) && (this._MouseReportPoint.y === Pos.y)) { return; }
+        this._MouseReportPoint = Pos;
+
+        var button: number = 32 + Math.max(0, held);
+        if (this._ReportMouseSgr) {
+            this.onmousereport.trigger('\x1B[<' + button.toString() + ';' + Pos.x.toString() + ';' + Pos.y.toString() + 'M');
+        } else {
+            var x: number = Math.min(222, '!'.charCodeAt(0) + Pos.x - 1);
+            var y: number = Math.min(222, '!'.charCodeAt(0) + Pos.y - 1);
+            this.onmousereport.trigger('\x1B[M' + String.fromCharCode(' '.charCodeAt(0) + button) + String.fromCharCode(x) + String.fromCharCode(y));
+        }
+    }
+
     private OnMouseMove(me: MouseEvent): void {
+        // The host is tracking movement: report it, and leave text selection
+        // alone so a drag does not paint a highlight over the host's screen.
+        if (this._ReportMouse && (this._ReportMouseMotion !== 0)) { this.ReportMouseMove(me); return; }
+
         // Bail if mouse is not down
         if (typeof this._MouseDownPoint === 'undefined') { return; }
 
@@ -1417,7 +1463,7 @@ class Crt {
             UpPoint = this.MousePositionToScreenPosition(me.clientX - CanvasOffset.x, me.clientY - CanvasOffset.y);
         }
 
-        if (typeof this._MouseDownPoint !== 'undefined') {
+        if ((typeof this._MouseDownPoint !== 'undefined') && !(this._ReportMouse && (this._ReportMouseMotion !== 0))) {
             // Ignore single cell copies
             var DownPoint = new Point(this._MouseDownPoint.x, this._MouseDownPoint.y);
             if ((DownPoint.x === UpPoint.x) && (DownPoint.y === UpPoint.y)) {
@@ -2031,6 +2077,16 @@ class Crt {
     public set ReportMouse(value: boolean) {
         this._Canvas.style.cursor = value ? 'pointer' : 'text';
         this._ReportMouse = value;
+    }
+
+    public get ReportMouseMotion(): number {
+        return this._ReportMouseMotion;
+    }
+
+    public set ReportMouseMotion(value: number) {
+        // Forget the last reported cell so the first movement always reports.
+        delete this._MouseReportPoint;
+        this._ReportMouseMotion = value;
     }
 
     public get ReportMouseSgr(): boolean {

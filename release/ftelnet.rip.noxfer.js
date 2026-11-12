@@ -577,6 +577,7 @@ var Ansi = (function () {
         this.ANSI_COLORS = [0, 4, 2, 6, 1, 5, 3, 7];
         this.ANSI256_COLORS = [{ 'r': 0, 'g': 0, 'b': 0 }, { 'r': 128, 'g': 0, 'b': 0 }, { 'r': 0, 'g': 128, 'b': 0 }, { 'r': 128, 'g': 128, 'b': 0 }, { 'r': 0, 'g': 0, 'b': 128 }, { 'r': 128, 'g': 0, 'b': 128 }, { 'r': 0, 'g': 128, 'b': 128 }, { 'r': 192, 'g': 192, 'b': 192 }, { 'r': 128, 'g': 128, 'b': 128 }, { 'r': 255, 'g': 0, 'b': 0 }, { 'r': 0, 'g': 255, 'b': 0 }, { 'r': 255, 'g': 255, 'b': 0 }, { 'r': 0, 'g': 0, 'b': 255 }, { 'r': 255, 'g': 0, 'b': 255 }, { 'r': 0, 'g': 255, 'b': 255 }, { 'r': 255, 'g': 255, 'b': 255 }, { 'r': 0, 'g': 0, 'b': 0 }, { 'r': 0, 'g': 0, 'b': 95 }, { 'r': 0, 'g': 0, 'b': 135 }, { 'r': 0, 'g': 0, 'b': 175 }, { 'r': 0, 'g': 0, 'b': 215 }, { 'r': 0, 'g': 0, 'b': 255 }, { 'r': 0, 'g': 95, 'b': 0 }, { 'r': 0, 'g': 95, 'b': 95 }, { 'r': 0, 'g': 95, 'b': 135 }, { 'r': 0, 'g': 95, 'b': 175 }, { 'r': 0, 'g': 95, 'b': 215 }, { 'r': 0, 'g': 95, 'b': 255 }, { 'r': 0, 'g': 135, 'b': 0 }, { 'r': 0, 'g': 135, 'b': 95 }, { 'r': 0, 'g': 135, 'b': 135 }, { 'r': 0, 'g': 135, 'b': 175 }, { 'r': 0, 'g': 135, 'b': 215 }, { 'r': 0, 'g': 135, 'b': 255 }, { 'r': 0, 'g': 175, 'b': 0 }, { 'r': 0, 'g': 175, 'b': 95 }, { 'r': 0, 'g': 175, 'b': 135 }, { 'r': 0, 'g': 175, 'b': 175 }, { 'r': 0, 'g': 175, 'b': 215 }, { 'r': 0, 'g': 175, 'b': 255 }, { 'r': 0, 'g': 215, 'b': 0 }, { 'r': 0, 'g': 215, 'b': 95 }, { 'r': 0, 'g': 215, 'b': 135 }, { 'r': 0, 'g': 215, 'b': 175 }, { 'r': 0, 'g': 215, 'b': 215 }, { 'r': 0, 'g': 215, 'b': 255 }, { 'r': 0, 'g': 255, 'b': 0 }, { 'r': 0, 'g': 255, 'b': 95 }, { 'r': 0, 'g': 255, 'b': 135 }, { 'r': 0, 'g': 255, 'b': 175 }, { 'r': 0, 'g': 255, 'b': 215 }, { 'r': 0, 'g': 255, 'b': 255 }, { 'r': 95, 'g': 0, 'b': 0 }, { 'r': 95, 'g': 0, 'b': 95 }, { 'r': 95, 'g': 0, 'b': 135 }, { 'r': 95, 'g': 0, 'b': 175 }, { 'r': 95, 'g': 0, 'b': 215 }, { 'r': 95, 'g': 0, 'b': 255 }, { 'r': 95, 'g': 95, 'b': 0 }, { 'r': 95, 'g': 95, 'b': 95 }, { 'r': 95, 'g': 95, 'b': 135 }, { 'r': 95, 'g': 95, 'b': 175 }, { 'r': 95, 'g': 95, 'b': 215 }, { 'r': 95, 'g': 95, 'b': 255 }, { 'r': 95, 'g': 135, 'b': 0 }, { 'r': 95, 'g': 135, 'b': 95 }, { 'r': 95, 'g': 135, 'b': 135 }, { 'r': 95, 'g': 135, 'b': 175 }, { 'r': 95, 'g': 135, 'b': 215 }, { 'r': 95, 'g': 135, 'b': 255 }, { 'r': 95, 'g': 175, 'b': 0 }, { 'r': 95, 'g': 175, 'b': 95 }, { 'r': 95, 'g': 175, 'b': 135 }, { 'r': 95, 'g': 175, 'b': 175 }, { 'r': 95, 'g': 175, 'b': 215 }, { 'r': 95, 'g': 175, 'b': 255 }, { 'r': 95, 'g': 215, 'b': 0 }, { 'r': 95, 'g': 215, 'b': 95 }, { 'r': 95, 'g': 215, 'b': 135 }, { 'r': 95, 'g': 215, 'b': 175 }, { 'r': 95, 'g': 215, 'b': 215 }, { 'r': 95, 'g': 215, 'b': 255 }, { 'r': 95, 'g': 255, 'b': 0 }, { 'r': 95, 'g': 255, 'b': 95 }, { 'r': 95, 'g': 255, 'b': 135 }, { 'r': 95, 'g': 255, 'b': 175 }, { 'r': 95, 'g': 255, 'b': 215 }, { 'r': 95, 'g': 255, 'b': 255 }, { 'r': 135, 'g': 0, 'b': 0 }, { 'r': 135, 'g': 0, 'b': 95 }, { 'r': 135, 'g': 0, 'b': 135 }, { 'r': 135, 'g': 0, 'b': 175 }, { 'r': 135, 'g': 0, 'b': 215 }, { 'r': 135, 'g': 0, 'b': 255 }, { 'r': 135, 'g': 95, 'b': 0 }, { 'r': 135, 'g': 95, 'b': 95 }, { 'r': 135, 'g': 95, 'b': 135 }, { 'r': 135, 'g': 95, 'b': 175 }, { 'r': 135, 'g': 95, 'b': 215 }, { 'r': 135, 'g': 95, 'b': 255 }, { 'r': 135, 'g': 135, 'b': 0 }, { 'r': 135, 'g': 135, 'b': 95 }, { 'r': 135, 'g': 135, 'b': 135 }, { 'r': 135, 'g': 135, 'b': 175 }, { 'r': 135, 'g': 135, 'b': 215 }, { 'r': 135, 'g': 135, 'b': 255 }, { 'r': 135, 'g': 175, 'b': 0 }, { 'r': 135, 'g': 175, 'b': 95 }, { 'r': 135, 'g': 175, 'b': 135 }, { 'r': 135, 'g': 175, 'b': 175 }, { 'r': 135, 'g': 175, 'b': 215 }, { 'r': 135, 'g': 175, 'b': 255 }, { 'r': 135, 'g': 215, 'b': 0 }, { 'r': 135, 'g': 215, 'b': 95 }, { 'r': 135, 'g': 215, 'b': 135 }, { 'r': 135, 'g': 215, 'b': 175 }, { 'r': 135, 'g': 215, 'b': 215 }, { 'r': 135, 'g': 215, 'b': 255 }, { 'r': 135, 'g': 255, 'b': 0 }, { 'r': 135, 'g': 255, 'b': 95 }, { 'r': 135, 'g': 255, 'b': 135 }, { 'r': 135, 'g': 255, 'b': 175 }, { 'r': 135, 'g': 255, 'b': 215 }, { 'r': 135, 'g': 255, 'b': 255 }, { 'r': 175, 'g': 0, 'b': 0 }, { 'r': 175, 'g': 0, 'b': 95 }, { 'r': 175, 'g': 0, 'b': 135 }, { 'r': 175, 'g': 0, 'b': 175 }, { 'r': 175, 'g': 0, 'b': 215 }, { 'r': 175, 'g': 0, 'b': 255 }, { 'r': 175, 'g': 95, 'b': 0 }, { 'r': 175, 'g': 95, 'b': 95 }, { 'r': 175, 'g': 95, 'b': 135 }, { 'r': 175, 'g': 95, 'b': 175 }, { 'r': 175, 'g': 95, 'b': 215 }, { 'r': 175, 'g': 95, 'b': 255 }, { 'r': 175, 'g': 135, 'b': 0 }, { 'r': 175, 'g': 135, 'b': 95 }, { 'r': 175, 'g': 135, 'b': 135 }, { 'r': 175, 'g': 135, 'b': 175 }, { 'r': 175, 'g': 135, 'b': 215 }, { 'r': 175, 'g': 135, 'b': 255 }, { 'r': 175, 'g': 175, 'b': 0 }, { 'r': 175, 'g': 175, 'b': 95 }, { 'r': 175, 'g': 175, 'b': 135 }, { 'r': 175, 'g': 175, 'b': 175 }, { 'r': 175, 'g': 175, 'b': 215 }, { 'r': 175, 'g': 175, 'b': 255 }, { 'r': 175, 'g': 215, 'b': 0 }, { 'r': 175, 'g': 215, 'b': 95 }, { 'r': 175, 'g': 215, 'b': 135 }, { 'r': 175, 'g': 215, 'b': 175 }, { 'r': 175, 'g': 215, 'b': 215 }, { 'r': 175, 'g': 215, 'b': 255 }, { 'r': 175, 'g': 255, 'b': 0 }, { 'r': 175, 'g': 255, 'b': 95 }, { 'r': 175, 'g': 255, 'b': 135 }, { 'r': 175, 'g': 255, 'b': 175 }, { 'r': 175, 'g': 255, 'b': 215 }, { 'r': 175, 'g': 255, 'b': 255 }, { 'r': 215, 'g': 0, 'b': 0 }, { 'r': 215, 'g': 0, 'b': 95 }, { 'r': 215, 'g': 0, 'b': 135 }, { 'r': 215, 'g': 0, 'b': 175 }, { 'r': 215, 'g': 0, 'b': 215 }, { 'r': 215, 'g': 0, 'b': 255 }, { 'r': 215, 'g': 95, 'b': 0 }, { 'r': 215, 'g': 95, 'b': 95 }, { 'r': 215, 'g': 95, 'b': 135 }, { 'r': 215, 'g': 95, 'b': 175 }, { 'r': 215, 'g': 95, 'b': 215 }, { 'r': 215, 'g': 95, 'b': 255 }, { 'r': 215, 'g': 135, 'b': 0 }, { 'r': 215, 'g': 135, 'b': 95 }, { 'r': 215, 'g': 135, 'b': 135 }, { 'r': 215, 'g': 135, 'b': 175 }, { 'r': 215, 'g': 135, 'b': 215 }, { 'r': 215, 'g': 135, 'b': 255 }, { 'r': 215, 'g': 175, 'b': 0 }, { 'r': 215, 'g': 175, 'b': 95 }, { 'r': 215, 'g': 175, 'b': 135 }, { 'r': 215, 'g': 175, 'b': 175 }, { 'r': 215, 'g': 175, 'b': 215 }, { 'r': 215, 'g': 175, 'b': 255 }, { 'r': 215, 'g': 215, 'b': 0 }, { 'r': 215, 'g': 215, 'b': 95 }, { 'r': 215, 'g': 215, 'b': 135 }, { 'r': 215, 'g': 215, 'b': 175 }, { 'r': 215, 'g': 215, 'b': 215 }, { 'r': 215, 'g': 215, 'b': 255 }, { 'r': 215, 'g': 255, 'b': 0 }, { 'r': 215, 'g': 255, 'b': 95 }, { 'r': 215, 'g': 255, 'b': 135 }, { 'r': 215, 'g': 255, 'b': 175 }, { 'r': 215, 'g': 255, 'b': 215 }, { 'r': 215, 'g': 255, 'b': 255 }, { 'r': 255, 'g': 0, 'b': 0 }, { 'r': 255, 'g': 0, 'b': 95 }, { 'r': 255, 'g': 0, 'b': 135 }, { 'r': 255, 'g': 0, 'b': 175 }, { 'r': 255, 'g': 0, 'b': 215 }, { 'r': 255, 'g': 0, 'b': 255 }, { 'r': 255, 'g': 95, 'b': 0 }, { 'r': 255, 'g': 95, 'b': 95 }, { 'r': 255, 'g': 95, 'b': 135 }, { 'r': 255, 'g': 95, 'b': 175 }, { 'r': 255, 'g': 95, 'b': 215 }, { 'r': 255, 'g': 95, 'b': 255 }, { 'r': 255, 'g': 135, 'b': 0 }, { 'r': 255, 'g': 135, 'b': 95 }, { 'r': 255, 'g': 135, 'b': 135 }, { 'r': 255, 'g': 135, 'b': 175 }, { 'r': 255, 'g': 135, 'b': 215 }, { 'r': 255, 'g': 135, 'b': 255 }, { 'r': 255, 'g': 175, 'b': 0 }, { 'r': 255, 'g': 175, 'b': 95 }, { 'r': 255, 'g': 175, 'b': 135 }, { 'r': 255, 'g': 175, 'b': 175 }, { 'r': 255, 'g': 175, 'b': 215 }, { 'r': 255, 'g': 175, 'b': 255 }, { 'r': 255, 'g': 215, 'b': 0 }, { 'r': 255, 'g': 215, 'b': 95 }, { 'r': 255, 'g': 215, 'b': 135 }, { 'r': 255, 'g': 215, 'b': 175 }, { 'r': 255, 'g': 215, 'b': 215 }, { 'r': 255, 'g': 215, 'b': 255 }, { 'r': 255, 'g': 255, 'b': 0 }, { 'r': 255, 'g': 255, 'b': 95 }, { 'r': 255, 'g': 255, 'b': 135 }, { 'r': 255, 'g': 255, 'b': 175 }, { 'r': 255, 'g': 255, 'b': 215 }, { 'r': 255, 'g': 255, 'b': 255 }, { 'r': 8, 'g': 8, 'b': 8 }, { 'r': 18, 'g': 18, 'b': 18 }, { 'r': 28, 'g': 28, 'b': 28 }, { 'r': 38, 'g': 38, 'b': 38 }, { 'r': 48, 'g': 48, 'b': 48 }, { 'r': 58, 'g': 58, 'b': 58 }, { 'r': 68, 'g': 68, 'b': 68 }, { 'r': 78, 'g': 78, 'b': 78 }, { 'r': 88, 'g': 88, 'b': 88 }, { 'r': 98, 'g': 98, 'b': 98 }, { 'r': 108, 'g': 108, 'b': 108 }, { 'r': 118, 'g': 118, 'b': 118 }, { 'r': 128, 'g': 128, 'b': 128 }, { 'r': 138, 'g': 138, 'b': 138 }, { 'r': 148, 'g': 148, 'b': 148 }, { 'r': 158, 'g': 158, 'b': 158 }, { 'r': 168, 'g': 168, 'b': 168 }, { 'r': 178, 'g': 178, 'b': 178 }, { 'r': 188, 'g': 188, 'b': 188 }, { 'r': 198, 'g': 198, 'b': 198 }, { 'r': 208, 'g': 208, 'b': 208 }, { 'r': 218, 'g': 218, 'b': 218 }, { 'r': 228, 'g': 228, 'b': 228 }, { 'r': 238, 'g': 238, 'b': 238 }];
         this._AnsiAttr = 7;
+        this._IceBright = false;
         this._AnsiBuffer = '';
         this._AnsiIntermediates = [];
         this._AnsiParams = [];
@@ -587,6 +588,15 @@ var Ansi = (function () {
         this._SgrFragment = '';
         this._Crt = crt;
     }
+    Ansi.prototype.ModeParams = function () {
+        var first = this._AnsiParams[0];
+        var marker = ((first.charAt(0) === '?') || (first.charAt(0) === '=')) ? first.charAt(0) : '';
+        var modes = [first];
+        for (var i = 1; i < this._AnsiParams.length; i++) {
+            modes.push(marker + this._AnsiParams[i]);
+        }
+        return modes;
+    };
     Ansi.prototype.AnsiCommand = function (finalByte) {
         var Colour = 0;
         var Colour256;
@@ -723,45 +733,58 @@ var Ansi = (function () {
                 if (this._AnsiParams.length < 1) {
                     this._AnsiParams.push('0');
                 }
-                switch (this._AnsiParams[0]) {
-                    case '=1':
-                        this._Crt.ReportPhysicalKeys = true;
-                        break;
-                    case '=2':
-                        break;
-                    case '=255':
-                        console.log('Unhandled ESC sequence: Enable DoorWay Mode');
-                        break;
-                    case '?6':
-                        console.log('Unhandled ESC sequence: Enable origin mode');
-                        break;
-                    case '?7':
-                        console.log('Unhandled ESC sequence: Enable auto wrap');
-                        break;
-                    case '?9':
-                        this._Crt.ReportMouse = true;
-                    case '?25':
-                        this._Crt.ShowCursor();
-                        break;
-                    case '?31':
-                        console.log('Unhandled ESC sequence: Enable alt character set');
-                        break;
-                    case '?32':
-                        console.log('Unhandled ESC sequence: Bright Intensity Enable');
-                        break;
-                    case '?33':
-                        console.log('Unhandled ESC sequence: Blink to Bright Intensity Background');
-                        break;
-                    case '?1000':
-                        this._Crt.ReportMouse = true;
-                        break;
-                    case '?1006':
-                        this._Crt.ReportMouseSgr = true;
-                        break;
-                    default:
-                        console.log('Unknown ESC sequence: PB(' + this._AnsiParams.toString() + ') IB(' + this._AnsiIntermediates.toString() + ') FB(' + finalByte + ')');
-                        break;
-                }
+                var hModes = this.ModeParams();
+                for (var hmi = 0; hmi < hModes.length; hmi++)
+                    switch (hModes[hmi]) {
+                        case '=1':
+                            this._Crt.ReportPhysicalKeys = true;
+                            break;
+                        case '=2':
+                            break;
+                        case '=255':
+                            console.log('Unhandled ESC sequence: Enable DoorWay Mode');
+                            break;
+                        case '?6':
+                            console.log('Unhandled ESC sequence: Enable origin mode');
+                            break;
+                        case '?7':
+                            console.log('Unhandled ESC sequence: Enable auto wrap');
+                            break;
+                        case '?9':
+                            this._Crt.ReportMouse = true;
+                            this._Crt.ReportMouseMotion = 0;
+                            break;
+                        case '?25':
+                            this._Crt.ShowCursor();
+                            break;
+                        case '?31':
+                            console.log('Unhandled ESC sequence: Enable alt character set');
+                            break;
+                        case '?32':
+                            console.log('Unhandled ESC sequence: Bright Intensity Enable');
+                            break;
+                        case '?33':
+                            console.log('Unhandled ESC sequence: Blink to Bright Intensity Background');
+                            break;
+                        case '?1000':
+                            this._Crt.ReportMouse = true;
+                            this._Crt.ReportMouseMotion = 0;
+                            break;
+                        case '?1002':
+                            this._Crt.ReportMouse = true;
+                            this._Crt.ReportMouseMotion = 1;
+                            break;
+                        case '?1003':
+                            this._Crt.ReportMouse = true;
+                            this._Crt.ReportMouseMotion = 2;
+                            break;
+                        case '?1006':
+                            this._Crt.ReportMouseSgr = true;
+                            break;
+                        default:
+                            console.log('Unknown ESC sequence: PB(' + this._AnsiParams.toString() + ') IB(' + this._AnsiIntermediates.toString() + ') FB(' + finalByte + ')');
+                            break;
+                    }
                 break;
             case 'I':
             case 'Y':
@@ -805,45 +828,55 @@ var Ansi = (function () {
                 if (this._AnsiParams.length < 1) {
                     this._AnsiParams.push('0');
                 }
-                switch (this._AnsiParams[0]) {
-                    case '=1':
-                        this._Crt.ReportPhysicalKeys = false;
-                        break;
-                    case '=2':
-                        break;
-                    case '=255':
-                        console.log('Unhandled ESC sequence: Disable DoorWay Mode');
-                        break;
-                    case '?6':
-                        console.log('Unhandled ESC sequence: Disable origin mode');
-                        break;
-                    case '?7':
-                        console.log('Unhandled ESC sequence: Disable auto wrap');
-                        break;
-                    case '?9':
-                        this._Crt.ReportMouse = false;
-                    case '?25':
-                        this._Crt.HideCursor();
-                        break;
-                    case '?31':
-                        console.log('Unhandled ESC sequence: Disable alt character set');
-                        break;
-                    case '?32':
-                        console.log('Unhandled ESC sequence: Bright Intensity Disable');
-                        break;
-                    case '?33':
-                        console.log('Unhandled ESC sequence: Blink Normal');
-                        break;
-                    case '?1000':
-                        this._Crt.ReportMouse = false;
-                        break;
-                    case '?1006':
-                        this._Crt.ReportMouseSgr = false;
-                        break;
-                    default:
-                        console.log('Unknown ESC sequence: PB(' + this._AnsiParams.toString() + ') IB(' + this._AnsiIntermediates.toString() + ') FB(' + finalByte + ')');
-                        break;
-                }
+                var lModes = this.ModeParams();
+                for (var lmi = 0; lmi < lModes.length; lmi++)
+                    switch (lModes[lmi]) {
+                        case '=1':
+                            this._Crt.ReportPhysicalKeys = false;
+                            break;
+                        case '=2':
+                            break;
+                        case '=255':
+                            console.log('Unhandled ESC sequence: Disable DoorWay Mode');
+                            break;
+                        case '?6':
+                            console.log('Unhandled ESC sequence: Disable origin mode');
+                            break;
+                        case '?7':
+                            console.log('Unhandled ESC sequence: Disable auto wrap');
+                            break;
+                        case '?9':
+                            this._Crt.ReportMouse = false;
+                            this._Crt.ReportMouseMotion = 0;
+                            break;
+                        case '?25':
+                            this._Crt.HideCursor();
+                            break;
+                        case '?31':
+                            console.log('Unhandled ESC sequence: Disable alt character set');
+                            break;
+                        case '?32':
+                            console.log('Unhandled ESC sequence: Bright Intensity Disable');
+                            break;
+                        case '?33':
+                            console.log('Unhandled ESC sequence: Blink Normal');
+                            break;
+                        case '?1000':
+                            this._Crt.ReportMouse = false;
+                            this._Crt.ReportMouseMotion = 0;
+                            break;
+                        case '?1002':
+                        case '?1003':
+                            this._Crt.ReportMouse = false;
+                            this._Crt.ReportMouseMotion = 0;
+                            break;
+                        case '?1006':
+                            this._Crt.ReportMouseSgr = false;
+                            break;
+                        default:
+                            console.log('Unknown ESC sequence: PB(' + this._AnsiParams.toString() + ') IB(' + this._AnsiIntermediates.toString() + ') FB(' + finalByte + ')');
+                            break;
+                    }
                 break;
             case 'M':
                 if (this._AnsiParams.length < 1) {
@@ -880,6 +913,7 @@ var Ansi = (function () {
                     switch (x) {
                         case 0:
                             this._Crt.NormVideo();
+                            this._IceBright = false;
                             break;
                         case 1:
                             this._Crt.HighVideo();
@@ -892,12 +926,9 @@ var Ansi = (function () {
                         case 4:
                             break;
                         case 5:
-                            this._Crt.SetBlink(true);
-                            this._Crt.SetBlinkRate(500);
-                            break;
                         case 6:
-                            this._Crt.SetBlink(true);
-                            this._Crt.SetBlinkRate(250);
+                            this._IceBright = true;
+                            this._Crt.TextBackground(((this._Crt.TextAttr & 0xF0) >> 4) | 0x08);
                             break;
                         case 7:
                             this._Crt.ReverseVideo();
@@ -914,7 +945,8 @@ var Ansi = (function () {
                         case 24:
                             break;
                         case 25:
-                            this._Crt.SetBlink(false);
+                            this._IceBright = false;
+                            this._Crt.TextBackground(((this._Crt.TextAttr & 0xF0) >> 4) & 0x07);
                             break;
                         case 27:
                             this._Crt.ReverseVideo();
@@ -970,7 +1002,7 @@ var Ansi = (function () {
                         case 45:
                         case 46:
                         case 47:
-                            Colour = this.ANSI_COLORS[x - 40];
+                            Colour = this.ANSI_COLORS[x - 40] + (this._IceBright ? 8 : 0);
                             this._Crt.TextBackground(Colour);
                             break;
                         case 48:
@@ -993,7 +1025,7 @@ var Ansi = (function () {
                             }
                             break;
                         case 49:
-                            Colour = this.ANSI_COLORS[40 - 40];
+                            Colour = this.ANSI_COLORS[40 - 40] + (this._IceBright ? 8 : 0);
                             this._Crt.TextBackground(Colour);
                             break;
                         case 90:
@@ -1603,6 +1635,7 @@ var Crt = (function () {
         this._BellEnabled = true;
         this._BellVolume = 0.2;
         this._SoundVolume = 0.2;
+        this._ReportMouseMotion = 0;
         this._ScreenSize = new Point(80, 25);
         this._ScrollbackPosition = -1;
         this._ScrollbackSize = 250;
@@ -2654,7 +2687,54 @@ var Crt = (function () {
             }
         }
     };
+    Crt.prototype.ReportMouseMove = function (me) {
+        var held = -1;
+        if (typeof me.buttons === 'number') {
+            if (me.buttons & 1) {
+                held = 0;
+            }
+            else if (me.buttons & 4) {
+                held = 1;
+            }
+            else if (me.buttons & 2) {
+                held = 2;
+            }
+        }
+        else if (typeof this._MouseDownPoint !== 'undefined') {
+            held = 0;
+        }
+        if ((held < 0) && (this._ReportMouseMotion !== 2)) {
+            return;
+        }
+        var Pos;
+        if (typeof me.offsetX !== 'undefined') {
+            Pos = this.MousePositionToScreenPosition(me.offsetX, me.offsetY);
+        }
+        else {
+            var CanvasOffset = Offset.getOffset(this._Canvas);
+            Pos = this.MousePositionToScreenPosition(me.clientX - CanvasOffset.x, me.clientY - CanvasOffset.y);
+        }
+        Pos.x = Math.max(1, Math.min(this._ScreenSize.x, Pos.x));
+        Pos.y = Math.max(1, Math.min(this._ScreenSize.y, Pos.y));
+        if ((typeof this._MouseReportPoint !== 'undefined') && (this._MouseReportPoint.x === Pos.x) && (this._MouseReportPoint.y === Pos.y)) {
+            return;
+        }
+        this._MouseReportPoint = Pos;
+        var button = 32 + Math.max(0, held);
+        if (this._ReportMouseSgr) {
+            this.onmousereport.trigger('\x1B[<' + button.toString() + ';' + Pos.x.toString() + ';' + Pos.y.toString() + 'M');
+        }
+        else {
+            var x = Math.min(222, '!'.charCodeAt(0) + Pos.x - 1);
+            var y = Math.min(222, '!'.charCodeAt(0) + Pos.y - 1);
+            this.onmousereport.trigger('\x1B[M' + String.fromCharCode(' '.charCodeAt(0) + button) + String.fromCharCode(x) + String.fromCharCode(y));
+        }
+    };
     Crt.prototype.OnMouseMove = function (me) {
+        if (this._ReportMouse && (this._ReportMouseMotion !== 0)) {
+            this.ReportMouseMove(me);
+            return;
+        }
         if (typeof this._MouseDownPoint === 'undefined') {
             return;
         }
@@ -2714,7 +2794,7 @@ var Crt = (function () {
             var CanvasOffset = Offset.getOffset(this._Canvas);
             UpPoint = this.MousePositionToScreenPosition(me.clientX - CanvasOffset.x, me.clientY - CanvasOffset.y);
         }
-        if (typeof this._MouseDownPoint !== 'undefined') {
+        if ((typeof this._MouseDownPoint !== 'undefined') && !(this._ReportMouse && (this._ReportMouseMotion !== 0))) {
             var DownPoint = new Point(this._MouseDownPoint.x, this._MouseDownPoint.y);
             if ((DownPoint.x === UpPoint.x) && (DownPoint.y === UpPoint.y)) {
                 if ((typeof this._Buffer[DownPoint.y][DownPoint.x].Ch !== 'undefined') && (this._Buffer[DownPoint.y][DownPoint.x].Ch.charCodeAt(0) > 32) && (this._Buffer[DownPoint.y][DownPoint.x].Ch.charCodeAt(0) <= 126)) {
@@ -3197,6 +3277,17 @@ var Crt = (function () {
         set: function (value) {
             this._Canvas.style.cursor = value ? 'pointer' : 'text';
             this._ReportMouse = value;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Crt.prototype, "ReportMouseMotion", {
+        get: function () {
+            return this._ReportMouseMotion;
+        },
+        set: function (value) {
+            delete this._MouseReportPoint;
+            this._ReportMouseMotion = value;
         },
         enumerable: true,
         configurable: true

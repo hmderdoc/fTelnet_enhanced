@@ -47,6 +47,10 @@ class Ansi {
     private ANSI256_COLORS: any[] = [{ 'r': 0, 'g': 0, 'b': 0 }, { 'r': 128, 'g': 0, 'b': 0 }, { 'r': 0, 'g': 128, 'b': 0 }, { 'r': 128, 'g': 128, 'b': 0 }, { 'r': 0, 'g': 0, 'b': 128 }, { 'r': 128, 'g': 0, 'b': 128 }, { 'r': 0, 'g': 128, 'b': 128 }, { 'r': 192, 'g': 192, 'b': 192 }, { 'r': 128, 'g': 128, 'b': 128 }, { 'r': 255, 'g': 0, 'b': 0 }, { 'r': 0, 'g': 255, 'b': 0 }, { 'r': 255, 'g': 255, 'b': 0 }, { 'r': 0, 'g': 0, 'b': 255 }, { 'r': 255, 'g': 0, 'b': 255 }, { 'r': 0, 'g': 255, 'b': 255 }, { 'r': 255, 'g': 255, 'b': 255 }, { 'r': 0, 'g': 0, 'b': 0 }, { 'r': 0, 'g': 0, 'b': 95 }, { 'r': 0, 'g': 0, 'b': 135 }, { 'r': 0, 'g': 0, 'b': 175 }, { 'r': 0, 'g': 0, 'b': 215 }, { 'r': 0, 'g': 0, 'b': 255 }, { 'r': 0, 'g': 95, 'b': 0 }, { 'r': 0, 'g': 95, 'b': 95 }, { 'r': 0, 'g': 95, 'b': 135 }, { 'r': 0, 'g': 95, 'b': 175 }, { 'r': 0, 'g': 95, 'b': 215 }, { 'r': 0, 'g': 95, 'b': 255 }, { 'r': 0, 'g': 135, 'b': 0 }, { 'r': 0, 'g': 135, 'b': 95 }, { 'r': 0, 'g': 135, 'b': 135 }, { 'r': 0, 'g': 135, 'b': 175 }, { 'r': 0, 'g': 135, 'b': 215 }, { 'r': 0, 'g': 135, 'b': 255 }, { 'r': 0, 'g': 175, 'b': 0 }, { 'r': 0, 'g': 175, 'b': 95 }, { 'r': 0, 'g': 175, 'b': 135 }, { 'r': 0, 'g': 175, 'b': 175 }, { 'r': 0, 'g': 175, 'b': 215 }, { 'r': 0, 'g': 175, 'b': 255 }, { 'r': 0, 'g': 215, 'b': 0 }, { 'r': 0, 'g': 215, 'b': 95 }, { 'r': 0, 'g': 215, 'b': 135 }, { 'r': 0, 'g': 215, 'b': 175 }, { 'r': 0, 'g': 215, 'b': 215 }, { 'r': 0, 'g': 215, 'b': 255 }, { 'r': 0, 'g': 255, 'b': 0 }, { 'r': 0, 'g': 255, 'b': 95 }, { 'r': 0, 'g': 255, 'b': 135 }, { 'r': 0, 'g': 255, 'b': 175 }, { 'r': 0, 'g': 255, 'b': 215 }, { 'r': 0, 'g': 255, 'b': 255 }, { 'r': 95, 'g': 0, 'b': 0 }, { 'r': 95, 'g': 0, 'b': 95 }, { 'r': 95, 'g': 0, 'b': 135 }, { 'r': 95, 'g': 0, 'b': 175 }, { 'r': 95, 'g': 0, 'b': 215 }, { 'r': 95, 'g': 0, 'b': 255 }, { 'r': 95, 'g': 95, 'b': 0 }, { 'r': 95, 'g': 95, 'b': 95 }, { 'r': 95, 'g': 95, 'b': 135 }, { 'r': 95, 'g': 95, 'b': 175 }, { 'r': 95, 'g': 95, 'b': 215 }, { 'r': 95, 'g': 95, 'b': 255 }, { 'r': 95, 'g': 135, 'b': 0 }, { 'r': 95, 'g': 135, 'b': 95 }, { 'r': 95, 'g': 135, 'b': 135 }, { 'r': 95, 'g': 135, 'b': 175 }, { 'r': 95, 'g': 135, 'b': 215 }, { 'r': 95, 'g': 135, 'b': 255 }, { 'r': 95, 'g': 175, 'b': 0 }, { 'r': 95, 'g': 175, 'b': 95 }, { 'r': 95, 'g': 175, 'b': 135 }, { 'r': 95, 'g': 175, 'b': 175 }, { 'r': 95, 'g': 175, 'b': 215 }, { 'r': 95, 'g': 175, 'b': 255 }, { 'r': 95, 'g': 215, 'b': 0 }, { 'r': 95, 'g': 215, 'b': 95 }, { 'r': 95, 'g': 215, 'b': 135 }, { 'r': 95, 'g': 215, 'b': 175 }, { 'r': 95, 'g': 215, 'b': 215 }, { 'r': 95, 'g': 215, 'b': 255 }, { 'r': 95, 'g': 255, 'b': 0 }, { 'r': 95, 'g': 255, 'b': 95 }, { 'r': 95, 'g': 255, 'b': 135 }, { 'r': 95, 'g': 255, 'b': 175 }, { 'r': 95, 'g': 255, 'b': 215 }, { 'r': 95, 'g': 255, 'b': 255 }, { 'r': 135, 'g': 0, 'b': 0 }, { 'r': 135, 'g': 0, 'b': 95 }, { 'r': 135, 'g': 0, 'b': 135 }, { 'r': 135, 'g': 0, 'b': 175 }, { 'r': 135, 'g': 0, 'b': 215 }, { 'r': 135, 'g': 0, 'b': 255 }, { 'r': 135, 'g': 95, 'b': 0 }, { 'r': 135, 'g': 95, 'b': 95 }, { 'r': 135, 'g': 95, 'b': 135 }, { 'r': 135, 'g': 95, 'b': 175 }, { 'r': 135, 'g': 95, 'b': 215 }, { 'r': 135, 'g': 95, 'b': 255 }, { 'r': 135, 'g': 135, 'b': 0 }, { 'r': 135, 'g': 135, 'b': 95 }, { 'r': 135, 'g': 135, 'b': 135 }, { 'r': 135, 'g': 135, 'b': 175 }, { 'r': 135, 'g': 135, 'b': 215 }, { 'r': 135, 'g': 135, 'b': 255 }, { 'r': 135, 'g': 175, 'b': 0 }, { 'r': 135, 'g': 175, 'b': 95 }, { 'r': 135, 'g': 175, 'b': 135 }, { 'r': 135, 'g': 175, 'b': 175 }, { 'r': 135, 'g': 175, 'b': 215 }, { 'r': 135, 'g': 175, 'b': 255 }, { 'r': 135, 'g': 215, 'b': 0 }, { 'r': 135, 'g': 215, 'b': 95 }, { 'r': 135, 'g': 215, 'b': 135 }, { 'r': 135, 'g': 215, 'b': 175 }, { 'r': 135, 'g': 215, 'b': 215 }, { 'r': 135, 'g': 215, 'b': 255 }, { 'r': 135, 'g': 255, 'b': 0 }, { 'r': 135, 'g': 255, 'b': 95 }, { 'r': 135, 'g': 255, 'b': 135 }, { 'r': 135, 'g': 255, 'b': 175 }, { 'r': 135, 'g': 255, 'b': 215 }, { 'r': 135, 'g': 255, 'b': 255 }, { 'r': 175, 'g': 0, 'b': 0 }, { 'r': 175, 'g': 0, 'b': 95 }, { 'r': 175, 'g': 0, 'b': 135 }, { 'r': 175, 'g': 0, 'b': 175 }, { 'r': 175, 'g': 0, 'b': 215 }, { 'r': 175, 'g': 0, 'b': 255 }, { 'r': 175, 'g': 95, 'b': 0 }, { 'r': 175, 'g': 95, 'b': 95 }, { 'r': 175, 'g': 95, 'b': 135 }, { 'r': 175, 'g': 95, 'b': 175 }, { 'r': 175, 'g': 95, 'b': 215 }, { 'r': 175, 'g': 95, 'b': 255 }, { 'r': 175, 'g': 135, 'b': 0 }, { 'r': 175, 'g': 135, 'b': 95 }, { 'r': 175, 'g': 135, 'b': 135 }, { 'r': 175, 'g': 135, 'b': 175 }, { 'r': 175, 'g': 135, 'b': 215 }, { 'r': 175, 'g': 135, 'b': 255 }, { 'r': 175, 'g': 175, 'b': 0 }, { 'r': 175, 'g': 175, 'b': 95 }, { 'r': 175, 'g': 175, 'b': 135 }, { 'r': 175, 'g': 175, 'b': 175 }, { 'r': 175, 'g': 175, 'b': 215 }, { 'r': 175, 'g': 175, 'b': 255 }, { 'r': 175, 'g': 215, 'b': 0 }, { 'r': 175, 'g': 215, 'b': 95 }, { 'r': 175, 'g': 215, 'b': 135 }, { 'r': 175, 'g': 215, 'b': 175 }, { 'r': 175, 'g': 215, 'b': 215 }, { 'r': 175, 'g': 215, 'b': 255 }, { 'r': 175, 'g': 255, 'b': 0 }, { 'r': 175, 'g': 255, 'b': 95 }, { 'r': 175, 'g': 255, 'b': 135 }, { 'r': 175, 'g': 255, 'b': 175 }, { 'r': 175, 'g': 255, 'b': 215 }, { 'r': 175, 'g': 255, 'b': 255 }, { 'r': 215, 'g': 0, 'b': 0 }, { 'r': 215, 'g': 0, 'b': 95 }, { 'r': 215, 'g': 0, 'b': 135 }, { 'r': 215, 'g': 0, 'b': 175 }, { 'r': 215, 'g': 0, 'b': 215 }, { 'r': 215, 'g': 0, 'b': 255 }, { 'r': 215, 'g': 95, 'b': 0 }, { 'r': 215, 'g': 95, 'b': 95 }, { 'r': 215, 'g': 95, 'b': 135 }, { 'r': 215, 'g': 95, 'b': 175 }, { 'r': 215, 'g': 95, 'b': 215 }, { 'r': 215, 'g': 95, 'b': 255 }, { 'r': 215, 'g': 135, 'b': 0 }, { 'r': 215, 'g': 135, 'b': 95 }, { 'r': 215, 'g': 135, 'b': 135 }, { 'r': 215, 'g': 135, 'b': 175 }, { 'r': 215, 'g': 135, 'b': 215 }, { 'r': 215, 'g': 135, 'b': 255 }, { 'r': 215, 'g': 175, 'b': 0 }, { 'r': 215, 'g': 175, 'b': 95 }, { 'r': 215, 'g': 175, 'b': 135 }, { 'r': 215, 'g': 175, 'b': 175 }, { 'r': 215, 'g': 175, 'b': 215 }, { 'r': 215, 'g': 175, 'b': 255 }, { 'r': 215, 'g': 215, 'b': 0 }, { 'r': 215, 'g': 215, 'b': 95 }, { 'r': 215, 'g': 215, 'b': 135 }, { 'r': 215, 'g': 215, 'b': 175 }, { 'r': 215, 'g': 215, 'b': 215 }, { 'r': 215, 'g': 215, 'b': 255 }, { 'r': 215, 'g': 255, 'b': 0 }, { 'r': 215, 'g': 255, 'b': 95 }, { 'r': 215, 'g': 255, 'b': 135 }, { 'r': 215, 'g': 255, 'b': 175 }, { 'r': 215, 'g': 255, 'b': 215 }, { 'r': 215, 'g': 255, 'b': 255 }, { 'r': 255, 'g': 0, 'b': 0 }, { 'r': 255, 'g': 0, 'b': 95 }, { 'r': 255, 'g': 0, 'b': 135 }, { 'r': 255, 'g': 0, 'b': 175 }, { 'r': 255, 'g': 0, 'b': 215 }, { 'r': 255, 'g': 0, 'b': 255 }, { 'r': 255, 'g': 95, 'b': 0 }, { 'r': 255, 'g': 95, 'b': 95 }, { 'r': 255, 'g': 95, 'b': 135 }, { 'r': 255, 'g': 95, 'b': 175 }, { 'r': 255, 'g': 95, 'b': 215 }, { 'r': 255, 'g': 95, 'b': 255 }, { 'r': 255, 'g': 135, 'b': 0 }, { 'r': 255, 'g': 135, 'b': 95 }, { 'r': 255, 'g': 135, 'b': 135 }, { 'r': 255, 'g': 135, 'b': 175 }, { 'r': 255, 'g': 135, 'b': 215 }, { 'r': 255, 'g': 135, 'b': 255 }, { 'r': 255, 'g': 175, 'b': 0 }, { 'r': 255, 'g': 175, 'b': 95 }, { 'r': 255, 'g': 175, 'b': 135 }, { 'r': 255, 'g': 175, 'b': 175 }, { 'r': 255, 'g': 175, 'b': 215 }, { 'r': 255, 'g': 175, 'b': 255 }, { 'r': 255, 'g': 215, 'b': 0 }, { 'r': 255, 'g': 215, 'b': 95 }, { 'r': 255, 'g': 215, 'b': 135 }, { 'r': 255, 'g': 215, 'b': 175 }, { 'r': 255, 'g': 215, 'b': 215 }, { 'r': 255, 'g': 215, 'b': 255 }, { 'r': 255, 'g': 255, 'b': 0 }, { 'r': 255, 'g': 255, 'b': 95 }, { 'r': 255, 'g': 255, 'b': 135 }, { 'r': 255, 'g': 255, 'b': 175 }, { 'r': 255, 'g': 255, 'b': 215 }, { 'r': 255, 'g': 255, 'b': 255 }, { 'r': 8, 'g': 8, 'b': 8 }, { 'r': 18, 'g': 18, 'b': 18 }, { 'r': 28, 'g': 28, 'b': 28 }, { 'r': 38, 'g': 38, 'b': 38 }, { 'r': 48, 'g': 48, 'b': 48 }, { 'r': 58, 'g': 58, 'b': 58 }, { 'r': 68, 'g': 68, 'b': 68 }, { 'r': 78, 'g': 78, 'b': 78 }, { 'r': 88, 'g': 88, 'b': 88 }, { 'r': 98, 'g': 98, 'b': 98 }, { 'r': 108, 'g': 108, 'b': 108 }, { 'r': 118, 'g': 118, 'b': 118 }, { 'r': 128, 'g': 128, 'b': 128 }, { 'r': 138, 'g': 138, 'b': 138 }, { 'r': 148, 'g': 148, 'b': 148 }, { 'r': 158, 'g': 158, 'b': 158 }, { 'r': 168, 'g': 168, 'b': 168 }, { 'r': 178, 'g': 178, 'b': 178 }, { 'r': 188, 'g': 188, 'b': 188 }, { 'r': 198, 'g': 198, 'b': 198 }, { 'r': 208, 'g': 208, 'b': 208 }, { 'r': 218, 'g': 218, 'b': 218 }, { 'r': 228, 'g': 228, 'b': 228 }, { 'r': 238, 'g': 238, 'b': 238 }];
 
     private _AnsiAttr: number = 7;
+    // iCE colour is always on: blink (SGR 5/6) selects a bright background
+    // instead of blinking, whether or not the host sent CSI ? 33 h. This
+    // tracks it so a later 40-47/49 keeps the background bright until SGR 0/25.
+    private _IceBright: boolean = false;
     private _AnsiBuffer: string = '';
     private _AnsiIntermediates: string[] = [];
     private _AnsiParams: string[] = [];
@@ -69,6 +73,16 @@ class Ansi {
     // Source for most commands:
     // http://cvs.synchro.net/cgi-bin/viewcvs.cgi/*checkout*/src/conio/cterm.txt?content-type=text%2Fplain&revision=HEAD
     // Commands not found in above document noted with NOT IN CTERM.TXT
+    // The modes named by a CSI ... h / l. The private marker ('?' or '=') is
+    // only on the first parameter but applies to all of them.
+    private ModeParams(): string[] {
+        var first: string = this._AnsiParams[0];
+        var marker: string = ((first.charAt(0) === '?') || (first.charAt(0) === '=')) ? first.charAt(0) : '';
+        var modes: string[] = [first];
+        for (var i: number = 1; i < this._AnsiParams.length; i++) { modes.push(marker + this._AnsiParams[i]); }
+        return modes;
+    }
+
     private AnsiCommand(finalByte: string): void {
         var Colour: number = 0;
         var Colour256: any;
@@ -337,7 +351,10 @@ class Ansi {
                 break;
             case 'h':
                 if (this._AnsiParams.length < 1) { this._AnsiParams.push('0'); }
-                switch (this._AnsiParams[0]) {
+                // One sequence can carry several modes (CSI ? 1003 ; 1006 h);
+                // each is handled in turn rather than only the first.
+                var hModes: string[] = this.ModeParams();
+                for (var hmi: number = 0; hmi < hModes.length; hmi++) switch (hModes[hmi]) {
                     case '=1': /* CSI = 1 h
                                     Enable CTerm physical key reporting: keys
                                     are reported as press/release edges with
@@ -380,6 +397,8 @@ class Ansi {
                                     <x> and <y> are '!' + position (0-based)
                                     SOURCE: xterm */
                         this._Crt.ReportMouse = true;
+                        this._Crt.ReportMouseMotion = 0;
+                        break;
                     case '?25': /* CSI ? 25 h
 	                                NON-STANDARD EXTENSION
 	                                Display the cursor
@@ -414,6 +433,23 @@ class Ansi {
                                     <x> and <y> are '!' + position (0-based)
                                     SOURCE: xterm */
                         this._Crt.ReportMouse = true;
+                        this._Crt.ReportMouseMotion = 0;
+                        break;
+                    case '?1002': /* CSI ? 1002 h
+                                    Button-event tracking mode mouse reporting
+                                    As 1000, plus movement while a button is
+                                    held, with 32 added to the button number.
+                                    SOURCE: xterm */
+                        this._Crt.ReportMouse = true;
+                        this._Crt.ReportMouseMotion = 1;
+                        break;
+                    case '?1003': /* CSI ? 1003 h
+                                    Any-event tracking mode mouse reporting
+                                    As 1002, plus movement with no button held,
+                                    which is reported as though button 0 were.
+                                    SOURCE: xterm */
+                        this._Crt.ReportMouse = true;
+                        this._Crt.ReportMouseMotion = 2;
                         break;
                     case '?1006': /* CSI ? 1006 h
                                     SGR encoded extended coordinates
@@ -485,7 +521,10 @@ class Ansi {
                 break;
             case 'l':
                 if (this._AnsiParams.length < 1) { this._AnsiParams.push('0'); }
-                switch (this._AnsiParams[0]) {
+                // One sequence can carry several modes (CSI ? 1003 ; 1006 l);
+                // each is handled in turn rather than only the first.
+                var lModes: string[] = this.ModeParams();
+                for (var lmi: number = 0; lmi < lModes.length; lmi++) switch (lModes[lmi]) {
                     case '=1': /* CSI = 1 l
                                     Disable CTerm physical key reporting. */
                         this._Crt.ReportPhysicalKeys = false;
@@ -518,6 +557,8 @@ class Ansi {
                     case '?9': /* CSI ? 9 l
                                     Disable X10 compatible mouse reporting */
                         this._Crt.ReportMouse = false;
+                        this._Crt.ReportMouseMotion = 0;
+                        break;
                     case '?25': /* CSI ? 25 l
 	                                NON-STANDARD EXTENSION
 	                                Hide the cursor
@@ -546,6 +587,12 @@ class Ansi {
                                     Disable Normal tracking mode mouse reporting
 	                                SOURCE: xterm */
                         this._Crt.ReportMouse = false;
+                        this._Crt.ReportMouseMotion = 0;
+                        break;
+                    case '?1002': /* CSI ? 1002 l  Disable Button-event tracking */
+                    case '?1003': /* CSI ? 1003 l  Disable Any-event tracking */
+                        this._Crt.ReportMouse = false;
+                        this._Crt.ReportMouseMotion = 0;
                         break;
                     case '?1006': /* CSI ? 1006 l
                                     Disable SGR encoded extended coordinates
@@ -655,6 +702,7 @@ class Ansi {
                     switch (x) {
                         case 0: // Default attribute, white on black
                             this._Crt.NormVideo();
+                            this._IceBright = false;
                             break;
                         case 1: // Bright Intensity
                             this._Crt.HighVideo();
@@ -666,13 +714,10 @@ class Ansi {
                             break;
                         case 4: // NOT IN CTERM.TXT Underline: Single
                             break;
-                        case 5: // Blink (By definition, slow blink)
-                            this._Crt.SetBlink(true);
-                            this._Crt.SetBlinkRate(500);
-                            break;
-                        case 6: // Blink (By definition, fast blink)
-                            this._Crt.SetBlink(true);
-                            this._Crt.SetBlinkRate(250);
+                        case 5: // Blink: shown as iCE bright background, never blinks
+                        case 6:
+                            this._IceBright = true;
+                            this._Crt.TextBackground(((this._Crt.TextAttr & 0xF0) >> 4) | 0x08);
                             break;
                         case 7: // Negative Image - Reverses FG and BG
                             this._Crt.ReverseVideo();
@@ -688,8 +733,9 @@ class Ansi {
                             break;
                         case 24: // NOT IN CTERM.TXT Underline: None
                             break;
-                        case 25: // Steady (Not blinking)
-                            this._Crt.SetBlink(false);
+                        case 25: // Steady (Not blinking): drop the iCE bright background
+                            this._IceBright = false;
+                            this._Crt.TextBackground(((this._Crt.TextAttr & 0xF0) >> 4) & 0x07);
                             break;
                         case 27: // Positive Image - Reverses FG and BG  
                             // NOTE: This should be a separate attribute than 7 but this implementation makes them equal
@@ -741,7 +787,7 @@ class Ansi {
                         case 45:
                         case 46:
                         case 47:
-                            Colour = this.ANSI_COLORS[x - 40];
+                            Colour = this.ANSI_COLORS[x - 40] + (this._IceBright ? 8 : 0);
                             this._Crt.TextBackground(Colour);
                             break;
                         case 48: // Set background colour (either 5;n for 256, or 2;r;g;b for 24bit)
@@ -763,7 +809,7 @@ class Ansi {
                             }
                             break;
                         case 49: // Default background (same as black)
-                            Colour = this.ANSI_COLORS[40 - 40];
+                            Colour = this.ANSI_COLORS[40 - 40] + (this._IceBright ? 8 : 0);
                             this._Crt.TextBackground(Colour);
                             break;
                         case 90: // Set bright foreground colour
